@@ -18620,4 +18620,3006 @@ module.exports = function setupParser(Processing, options) {
         if (this.isRemote) { // Remote images cannot access imageData
           throw "Image is loaded remotely. Cannot resize.";
         }
-        if (this.width 
+        if (this.width !== 0 || this.height !== 0) {
+          // make aspect ratio if w or h is 0
+          if (w === 0 && h !== 0) {
+            w = Math.floor(this.width / this.height * h);
+          } else if (h === 0 && w !== 0) {
+            h = Math.floor(this.height / this.width * w);
+          }
+          // put 'this.imageData' into a new canvas
+          var canvas = getCanvasData(this.imageData).canvas;
+          // pull imageData object out of canvas into ImageData object
+          var imageData = getCanvasData(canvas, w, h).context.getImageData(0, 0, w, h);
+          // set this as new pimage
+          this.fromImageData(imageData);
+        }
+      },
+
+      /**
+      * @member PImage
+      * Masks part of an image from displaying by loading another image and using it as an alpha channel.
+      * This mask image should only contain grayscale data, but only the blue color channel is used. The
+      * mask image needs to be the same size as the image to which it is applied.
+      * In addition to using a mask image, an integer array containing the alpha channel data can be
+      * specified directly. This method is useful for creating dynamically generated alpha masks. This
+      * array must be of the same length as the target image's pixels array and should contain only grayscale
+      * data of values between 0-255.
+      *
+      * @param {PImage} maskImg         any PImage object used as the alpha channel for "img", needs to be same
+      *                                 size as "img"
+      * @param {int[]} maskArray        any array of Integer numbers used as the alpha channel, needs to be same
+      *                                 length as the image's pixel array
+      */
+      mask: function(mask) {
+        var obj = this.toImageData(),
+            i,
+            size;
+
+        if (mask instanceof PImage || mask.__isPImage) {
+          if (mask.width === this.width && mask.height === this.height) {
+            mask = mask.toImageData();
+
+            for (i = 2, size = this.width * this.height * 4; i < size; i += 4) {
+              // using it as an alpha channel
+              obj.data[i + 1] = mask.data[i];
+              // but only the blue color channel
+            }
+          } else {
+            throw "mask must have the same dimensions as PImage.";
+          }
+        } else if (mask instanceof Array) {
+          if (this.width * this.height === mask.length) {
+            for (i = 0, size = mask.length; i < size; ++i) {
+              obj.data[i * 4 + 3] = mask[i];
+            }
+          } else {
+            throw "mask array must be the same length as PImage pixels array.";
+          }
+        }
+
+        this.fromImageData(obj);
+      },
+
+      // These are intentionally left blank for PImages, we work live with pixels and draw as necessary
+      /**
+      * @member PImage
+      * Loads the pixel data for the image into its pixels[] array. This function must always be called
+      * before reading from or writing to pixels[].
+      * Certain renderers may or may not seem to require loadPixels() or updatePixels(). However, the
+      * rule is that any time you want to manipulate the pixels[] array, you must first call loadPixels(),
+      * and after changes have been made, call updatePixels(). Even if the renderer may not seem to use
+      * this function in the current Processing release, this will always be subject to change.
+      */
+      loadPixels: noop,
+
+      toImageData: function() {
+        if (this.isRemote) {
+          return this.sourceImg;
+        }
+
+        if (!this.__isDirty) {
+          return this.imageData;
+        }
+
+        var canvasData = getCanvasData(this.sourceImg);
+        return canvasData.context.getImageData(0, 0, this.width, this.height);
+      },
+
+      toDataURL: function() {
+        if (this.isRemote) { // Remote images cannot access imageData
+          throw "Image is loaded remotely. Cannot create dataURI.";
+        }
+        var canvasData = getCanvasData(this.imageData);
+        return canvasData.canvas.toDataURL();
+      },
+
+      fromImageData: function(canvasImg) {
+        var w = canvasImg.width,
+          h = canvasImg.height,
+          canvas = document.createElement('canvas'),
+          ctx = canvas.getContext('2d');
+
+        this.width = canvas.width = w;
+        this.height = canvas.height = h;
+
+        ctx.putImageData(canvasImg, 0, 0);
+
+        // changed for 0.9
+        this.format = PConstants.ARGB;
+
+        this.imageData = canvasImg;
+        this.sourceImg = canvas;
+      }
+    };
+
+    p.PImage = PImage;
+
+    /**
+    * Creates a new PImage (the datatype for storing images). This provides a fresh buffer of pixels to play
+    * with. Set the size of the buffer with the width and height parameters. The format parameter defines how
+    * the pixels are stored. See the PImage reference for more information.
+    * Be sure to include all three parameters, specifying only the width and height (but no format) will
+    * produce a strange error.
+    * Advanced users please note that createImage() should be used instead of the syntax new PImage().
+    *
+    * @param {int} width                image width
+    * @param {int} height               image height
+    * @param {MODE} format              Either RGB, ARGB, ALPHA (grayscale alpha channel)
+    *
+    * @returns {PImage}
+    *
+    * @see PImage
+    * @see PGraphics
+    */
+    p.createImage = function(w, h, mode) {
+      return new PImage(w,h,mode);
+    };
+
+    // Loads an image for display. Type is an extension. Callback is fired on load.
+    /**
+    * Loads an image into a variable of type PImage. Four types of images ( .gif, .jpg, .tga, .png) images may
+    * be loaded. To load correctly, images must be located in the data directory of the current sketch. In most
+    * cases, load all images in setup() to preload them at the start of the program. Loading images inside draw()
+    * will reduce the speed of a program.
+    * The filename parameter can also be a URL to a file found online. For security reasons, a Processing sketch
+    * found online can only download files from the same server from which it came. Getting around this restriction
+    * requires a signed applet.
+    * The extension parameter is used to determine the image type in cases where the image filename does not end
+    * with a proper extension. Specify the extension as the second parameter to loadImage(), as shown in the
+    * third example on this page.
+    * If an image is not loaded successfully, the null value is returned and an error message will be printed to
+    * the console. The error message does not halt the program, however the null value may cause a NullPointerException
+    * if your code does not check whether the value returned from loadImage() is null.
+    * Depending on the type of error, a PImage object may still be returned, but the width and height of the image
+    * will be set to -1. This happens if bad image data is returned or cannot be decoded properly. Sometimes this happens
+    * with image URLs that produce a 403 error or that redirect to a password prompt, because loadImage() will attempt
+    * to interpret the HTML as image data.
+    *
+    * @param {String} filename        name of file to load, can be .gif, .jpg, .tga, or a handful of other image
+    *                                 types depending on your platform.
+    * @param {String} extension       the type of image to load, for example "png", "gif", "jpg"
+    *
+    * @returns {PImage}
+    *
+    * @see PImage
+    * @see image
+    * @see imageMode
+    * @see background
+    */
+    p.loadImage = function(file, type, callback) {
+      // if type is specified, we just ignore it
+
+      var pimg;
+      // if image is in the preloader cache return a new PImage
+      if (curSketch.imageCache.images[file]) {
+        pimg = new PImage(curSketch.imageCache.images[file]);
+        pimg.loaded = true;
+        return pimg;
+      }
+      // else async load it
+      pimg = new PImage();
+      var img = document.createElement('img');
+
+      pimg.sourceImg = img;
+
+      img.onload = (function(aImage, aPImage, aCallback) {
+        var image = aImage;
+        var pimg = aPImage;
+        var callback = aCallback;
+        return function() {
+          // change the <img> object into a PImage now that its loaded
+          pimg.fromHTMLImageData(image);
+          pimg.loaded = true;
+          if (callback) {
+            callback();
+          }
+        };
+      }(img, pimg, callback));
+
+      img.src = file; // needs to be called after the img.onload function is declared or it wont work in opera
+      return pimg;
+    };
+
+    // async loading of large images, same functionality as loadImage above
+    /**
+    * This function load images on a separate thread so that your sketch does not freeze while images load during
+    * setup(). While the image is loading, its width and height will be 0. If an error occurs while loading the image,
+    * its width and height will be set to -1. You'll know when the image has loaded properly because its width and
+    * height will be greater than 0. Asynchronous image loading (particularly when downloading from a server) can
+    * dramatically improve performance.
+    * The extension parameter is used to determine the image type in cases where the image filename does not end
+    * with a proper extension. Specify the extension as the second parameter to requestImage().
+    *
+    * @param {String} filename        name of file to load, can be .gif, .jpg, .tga, or a handful of other image
+    *                                 types depending on your platform.
+    * @param {String} extension       the type of image to load, for example "png", "gif", "jpg"
+    *
+    * @returns {PImage}
+    *
+    * @see PImage
+    * @see loadImage
+    */
+    p.requestImage = p.loadImage;
+
+    function get$2(x,y) {
+      var data;
+      // return the color at x,y (int) of curContext
+      if (x >= p.width || x < 0 || y < 0 || y >= p.height) {
+        // x,y is outside image return transparent black
+        return 0;
+      }
+
+      // loadPixels() has been called
+      if (isContextReplaced) {
+        var offset = ((0|x) + p.width * (0|y)) * 4;
+        data = p.imageData.data;
+        return (data[offset + 3] << 24) & PConstants.ALPHA_MASK |
+               (data[offset] << 16) & PConstants.RED_MASK |
+               (data[offset + 1] << 8) & PConstants.GREEN_MASK |
+               data[offset + 2] & PConstants.BLUE_MASK;
+      }
+
+      // x,y is inside canvas space
+      data = p.toImageData(0|x, 0|y, 1, 1).data;
+      return (data[3] << 24) & PConstants.ALPHA_MASK |
+             (data[0] << 16) & PConstants.RED_MASK |
+             (data[1] << 8) & PConstants.GREEN_MASK |
+             data[2] & PConstants.BLUE_MASK;
+    }
+    function get$3(x,y,img) {
+      if (img.isRemote) { // Remote images cannot access imageData
+        throw "Image is loaded remotely. Cannot get x,y.";
+      }
+      // PImage.get(x,y) was called, return the color (int) at x,y of img
+      var offset = y * img.width * 4 + (x * 4),
+          data = img.imageData.data;
+      return (data[offset + 3] << 24) & PConstants.ALPHA_MASK |
+             (data[offset] << 16) & PConstants.RED_MASK |
+             (data[offset + 1] << 8) & PConstants.GREEN_MASK |
+             data[offset + 2] & PConstants.BLUE_MASK;
+    }
+    function get$4(x, y, w, h) {
+      // return a PImage of w and h from cood x,y of curContext
+      var c = new PImage(w, h, PConstants.ARGB);
+      c.fromImageData(p.toImageData(x, y, w, h));
+      return c;
+    }
+    function get$5(x, y, w, h, img) {
+      if (img.isRemote) { // Remote images cannot access imageData
+        throw "Image is loaded remotely. Cannot get x,y,w,h.";
+      }
+      // PImage.get(x,y,w,h) was called, return x,y,w,h PImage of img
+      // offset start point needs to be *4
+      var c = new PImage(w, h, PConstants.ARGB), cData = c.imageData.data,
+        imgWidth = img.width, imgHeight = img.height, imgData = img.imageData.data;
+      // Don't need to copy pixels from the image outside ranges.
+      var startRow = Math.max(0, -y), startColumn = Math.max(0, -x),
+        stopRow = Math.min(h, imgHeight - y), stopColumn = Math.min(w, imgWidth - x);
+      for (var i = startRow; i < stopRow; ++i) {
+        var sourceOffset = ((y + i) * imgWidth + (x + startColumn)) * 4;
+        var targetOffset = (i * w + startColumn) * 4;
+        for (var j = startColumn; j < stopColumn; ++j) {
+          cData[targetOffset++] = imgData[sourceOffset++];
+          cData[targetOffset++] = imgData[sourceOffset++];
+          cData[targetOffset++] = imgData[sourceOffset++];
+          cData[targetOffset++] = imgData[sourceOffset++];
+        }
+      }
+      c.__isDirty = true;
+      return c;
+    }
+
+    // Gets a single pixel or block of pixels from the current Canvas Context or a PImage
+    /**
+    * Reads the color of any pixel or grabs a section of an image. If no parameters are specified, the entire
+    * image is returned. Get the value of one pixel by specifying an x,y coordinate. Get a section of the display
+    * window by specifying an additional width and height parameter. If the pixel requested is outside of the image
+    * window, black is returned. The numbers returned are scaled according to the current color ranges, but only RGB
+    * values are returned by this function. For example, even though you may have drawn a shape with colorMode(HSB),
+    * the numbers returned will be in RGB.
+    * Getting the color of a single pixel with get(x, y) is easy, but not as fast as grabbing the data directly
+    * from pixels[]. The equivalent statement to "get(x, y)" using pixels[] is "pixels[y*width+x]". Processing
+    * requires calling loadPixels() to load the display window data into the pixels[] array before getting the values.
+    * This function ignores imageMode().
+    *
+    * @param {int} x            x-coordinate of the pixel
+    * @param {int} y            y-coordinate of the pixel
+    * @param {int} width        width of pixel rectangle to get
+    * @param {int} height       height of pixel rectangle to get
+    *
+    * @returns {Color|PImage}
+    *
+    * @see set
+    * @see pixels[]
+    * @see imageMode
+    */
+    p.get = function(x, y, w, h, img) {
+      // for 0 2 and 4 arguments use curContext, otherwise PImage.get was called
+      if (img !== undefined) {
+        return get$5(x, y, w, h, img);
+      }
+      if (h !== undefined) {
+        return get$4(x, y, w, h);
+      }
+      if (w !== undefined) {
+        return get$3(x, y, w);
+      }
+      if (y !== undefined) {
+        return get$2(x, y);
+      }
+      if (x !== undefined) {
+        // PImage.get() was called, return a new PImage
+        return get$5(0, 0, x.width, x.height, x);
+      }
+
+      return get$4(0, 0, p.width, p.height);
+    };
+
+    /**
+     * Creates and returns a new <b>PGraphics</b> object of the types P2D, P3D, and JAVA2D. Use this class if you need to draw
+     * into an off-screen graphics buffer. It's not possible to use <b>createGraphics()</b> with OPENGL, because it doesn't
+     * allow offscreen use. The DXF and PDF renderers require the filename parameter. <br /><br /> It's important to call
+     * any drawing commands between beginDraw() and endDraw() statements. This is also true for any commands that affect
+     * drawing, such as smooth() or colorMode().<br /><br /> Unlike the main drawing surface which is completely opaque,
+     * surfaces created with createGraphics() can have transparency. This makes it possible to draw into a graphics and
+     * maintain the alpha channel.
+     *
+     * @param {int} width       width in pixels
+     * @param {int} height      height in pixels
+     * @param {int} renderer    Either P2D, P3D, JAVA2D, PDF, DXF
+     * @param {String} filename the name of the file (not supported yet)
+     */
+    p.createGraphics = function(w, h, render) {
+      var pg = new Processing();
+      pg.size(w, h, render);
+      pg.background(0,0);
+      return pg;
+    };
+
+    // pixels caching
+    function resetContext() {
+      if(isContextReplaced) {
+        curContext = originalContext;
+        isContextReplaced = false;
+
+        p.updatePixels();
+      }
+    }
+    function SetPixelContextWrapper() {
+      function wrapFunction(newContext, name) {
+        function wrapper() {
+          resetContext();
+          curContext[name].apply(curContext, arguments);
+        }
+        newContext[name] = wrapper;
+      }
+      function wrapProperty(newContext, name) {
+        function getter() {
+          resetContext();
+          return curContext[name];
+        }
+        function setter(value) {
+          resetContext();
+          curContext[name] = value;
+        }
+        p.defineProperty(newContext, name, { get: getter, set: setter });
+      }
+      for(var n in curContext) {
+        if(typeof curContext[n] === 'function') {
+          wrapFunction(this, n);
+        } else {
+          wrapProperty(this, n);
+        }
+      }
+    }
+    function replaceContext() {
+      if(isContextReplaced) {
+        return;
+      }
+      p.loadPixels();
+      if(proxyContext === null) {
+        originalContext = curContext;
+        proxyContext = new SetPixelContextWrapper();
+      }
+      isContextReplaced = true;
+      curContext = proxyContext;
+      setPixelsCached = 0;
+    }
+
+    function set$3(x, y, c) {
+      if (x < p.width && x >= 0 && y >= 0 && y < p.height) {
+        replaceContext();
+        p.pixels.setPixel((0|x)+p.width*(0|y), c);
+        if(++setPixelsCached > maxPixelsCached) {
+          resetContext();
+        }
+      }
+    }
+    function set$4(x, y, obj, img) {
+      if (img.isRemote) { // Remote images cannot access imageData
+        throw "Image is loaded remotely. Cannot set x,y.";
+      }
+      var c = p.color.toArray(obj);
+      var offset = y * img.width * 4 + (x*4);
+      var data = img.imageData.data;
+      data[offset] = c[0];
+      data[offset+1] = c[1];
+      data[offset+2] = c[2];
+      data[offset+3] = c[3];
+    }
+
+    // Paints a pixel array into the canvas
+    /**
+    * Changes the color of any pixel or writes an image directly into the display window. The x and y parameters
+    * specify the pixel to change and the color  parameter specifies the color value. The color parameter is affected
+    * by the current color mode (the default is RGB values from 0 to 255). When setting an image, the x and y
+    * parameters define the coordinates for the upper-left corner of the image.
+    * Setting the color of a single pixel with set(x, y) is easy, but not as fast as putting the data directly
+    * into pixels[]. The equivalent statement to "set(x, y, #000000)" using pixels[] is "pixels[y*width+x] = #000000".
+    * You must call loadPixels() to load the display window data into the pixels[] array before setting the values
+    * and calling updatePixels() to update the window with any changes. This function ignores imageMode().
+    *
+    * @param {int} x            x-coordinate of the pixel
+    * @param {int} y            y-coordinate of the pixel
+    * @param {Color} obj        any value of the color datatype
+    * @param {PImage} img       any valid variable of type PImage
+    *
+    * @see get
+    * @see pixels[]
+    * @see imageMode
+    */
+    p.set = function(x, y, obj, img) {
+      var color, oldFill;
+      if (arguments.length === 3) {
+        // called p.set(), was it with a color or a img ?
+        if (typeof obj === "number") {
+          set$3(x, y, obj);
+        } else if (obj instanceof PImage || obj.__isPImage) {
+          p.image(obj, x, y);
+        }
+      } else if (arguments.length === 4) {
+        // PImage.set(x,y,c) was called, set coordinate x,y color to c of img
+        set$4(x, y, obj, img);
+      }
+    };
+    p.imageData = {};
+
+    // handle the sketch code for pixels[]
+    // parser code converts pixels[] to getPixels() or setPixels(),
+    // .length becomes getLength()
+    /**
+    * Array containing the values for all the pixels in the display window. These values are of the color datatype.
+    * This array is the size of the display window. For example, if the image is 100x100 pixels, there will be 10000
+    * values and if the window is 200x300 pixels, there will be 60000 values. The index value defines the position
+    * of a value within the array. For example, the statment color b = pixels[230] will set the variable b to be
+    * equal to the value at that location in the array.
+    * Before accessing this array, the data must loaded with the loadPixels() function. After the array data has
+    * been modified, the updatePixels() function must be run to update the changes.
+    *
+    * @param {int} index      must not exceed the size of the array
+    *
+    * @see loadPixels
+    * @see updatePixels
+    * @see get
+    * @see set
+    * @see PImage
+    */
+    p.pixels = {
+      getLength: function() { return p.imageData.data.length ? p.imageData.data.length/4 : 0; },
+      getPixel: function(i) {
+        var offset = i*4, data = p.imageData.data;
+        return (data[offset+3] << 24) & 0xff000000 |
+               (data[offset+0] << 16) & 0x00ff0000 |
+               (data[offset+1] << 8) & 0x0000ff00 |
+               data[offset+2] & 0x000000ff;
+      },
+      setPixel: function(i,c) {
+        var offset = i*4, data = p.imageData.data;
+        data[offset+0] = (c & 0x00ff0000) >>> 16; // RED_MASK
+        data[offset+1] = (c & 0x0000ff00) >>> 8;  // GREEN_MASK
+        data[offset+2] = (c & 0x000000ff);        // BLUE_MASK
+        data[offset+3] = (c & 0xff000000) >>> 24; // ALPHA_MASK
+      },
+      toArray: function() {
+        var arr = [], length = p.imageData.width * p.imageData.height, data = p.imageData.data;
+        for (var i = 0, offset = 0; i < length; i++, offset += 4) {
+          arr.push((data[offset+3] << 24) & 0xff000000 |
+                   (data[offset+0] << 16) & 0x00ff0000 |
+                   (data[offset+1] << 8) & 0x0000ff00 |
+                   data[offset+2] & 0x000000ff);
+        }
+        return arr;
+      },
+      set: function(arr) {
+        for (var i = 0, aL = arr.length; i < aL; i++) {
+          this.setPixel(i, arr[i]);
+        }
+      }
+    };
+
+    // Gets a 1-Dimensional pixel array from Canvas
+    /**
+    * Loads the pixel data for the display window into the pixels[] array. This function must always be called
+    * before reading from or writing to pixels[].
+    * Certain renderers may or may not seem to require loadPixels() or updatePixels(). However, the rule is that
+    * any time you want to manipulate the pixels[] array, you must first call loadPixels(), and after changes
+    * have been made, call updatePixels(). Even if the renderer may not seem to use this function in the current
+    * Processing release, this will always be subject to change.
+    *
+    * @see pixels[]
+    * @see updatePixels
+    */
+    p.loadPixels = function() {
+      p.imageData = drawing.$ensureContext().getImageData(0, 0, p.width, p.height);
+    };
+
+    // Draws a 1-Dimensional pixel array to Canvas
+    /**
+    * Updates the display window with the data in the pixels[] array. Use in conjunction with loadPixels(). If
+    * you're only reading pixels from the array, there's no need to call updatePixels() unless there are changes.
+    * Certain renderers may or may not seem to require loadPixels() or updatePixels(). However, the rule is that
+    * any time you want to manipulate the pixels[] array, you must first call loadPixels(), and after changes
+    * have been made, call updatePixels(). Even if the renderer may not seem to use this function in the current
+    * Processing release, this will always be subject to change.
+    * Currently, none of the renderers use the additional parameters to updatePixels(), however this may be
+    * implemented in the future.
+    *
+    * @see loadPixels
+    * @see pixels[]
+    */
+    p.updatePixels = function() {
+      if (p.imageData) {
+        drawing.$ensureContext().putImageData(p.imageData, 0, 0);
+      }
+    };
+
+    /**
+    * Set various hints and hacks for the renderer. This is used to handle obscure rendering features that cannot be
+    * implemented in a consistent manner across renderers. Many options will often graduate to standard features
+    * instead of hints over time.
+    * hint(ENABLE_OPENGL_4X_SMOOTH) - Enable 4x anti-aliasing for OpenGL. This can help force anti-aliasing if
+    * it has not been enabled by the user. On some graphics cards, this can also be set by the graphics driver's
+    * control panel, however not all cards make this available. This hint must be called immediately after the
+    * size() command because it resets the renderer, obliterating any settings and anything drawn (and like size(),
+    * re-running the code that came before it again).
+    * hint(DISABLE_OPENGL_2X_SMOOTH) - In Processing 1.0, Processing always enables 2x smoothing when the OpenGL
+    * renderer is used. This hint disables the default 2x smoothing and returns the smoothing behavior found in
+    * earlier releases, where smooth() and noSmooth() could be used to enable and disable smoothing, though the
+    * quality was inferior.
+    * hint(ENABLE_NATIVE_FONTS) - Use the native version fonts when they are installed, rather than the bitmapped
+    * version from a .vlw file. This is useful with the JAVA2D renderer setting, as it will improve font rendering
+    * speed. This is not enabled by default, because it can be misleading while testing because the type will look
+    * great on your machine (because you have the font installed) but lousy on others' machines if the identical
+    * font is unavailable. This option can only be set per-sketch, and must be called before any use of textFont().
+    * hint(DISABLE_DEPTH_TEST) - Disable the zbuffer, allowing you to draw on top of everything at will. When depth
+    * testing is disabled, items will be drawn to the screen sequentially, like a painting. This hint is most often
+    * used to draw in 3D, then draw in 2D on top of it (for instance, to draw GUI controls in 2D on top of a 3D
+    * interface). Starting in release 0149, this will also clear the depth buffer. Restore the default with
+    * hint(ENABLE_DEPTH_TEST), but note that with the depth buffer cleared, any 3D drawing that happens later in
+    * draw() will ignore existing shapes on the screen.
+    * hint(ENABLE_DEPTH_SORT) - Enable primitive z-sorting of triangles and lines in P3D and OPENGL. This can slow
+    * performance considerably, and the algorithm is not yet perfect. Restore the default with hint(DISABLE_DEPTH_SORT).
+    * hint(DISABLE_OPENGL_ERROR_REPORT) - Speeds up the OPENGL renderer setting by not checking for errors while
+    * running. Undo with hint(ENABLE_OPENGL_ERROR_REPORT).
+    * As of release 0149, unhint() has been removed in favor of adding additional ENABLE/DISABLE constants to reset
+    * the default behavior. This prevents the double negatives, and also reinforces which hints can be enabled or disabled.
+    *
+    * @param {MODE} item          constant: name of the hint to be enabled or disabled
+    *
+    * @see PGraphics
+    * @see createGraphics
+    * @see size
+    */
+    p.hint = function(which) {
+      var curContext = drawing.$ensureContext();
+      if (which === PConstants.DISABLE_DEPTH_TEST) {
+         curContext.disable(curContext.DEPTH_TEST);
+         curContext.depthMask(false);
+         curContext.clear(curContext.DEPTH_BUFFER_BIT);
+      }
+      else if (which === PConstants.ENABLE_DEPTH_TEST) {
+         curContext.enable(curContext.DEPTH_TEST);
+         curContext.depthMask(true);
+      }
+      else if (which === PConstants.ENABLE_OPENGL_2X_SMOOTH ||
+               which === PConstants.ENABLE_OPENGL_4X_SMOOTH){
+        renderSmooth = true;
+      }
+      else if (which === PConstants.DISABLE_OPENGL_2X_SMOOTH){
+        renderSmooth = false;
+      }
+    };
+
+    /**
+     * The background() function sets the color used for the background of the Processing window.
+     * The default background is light gray. In the <b>draw()</b> function, the background color is used to clear the display window at the beginning of each frame.
+     * An image can also be used as the background for a sketch, however its width and height must be the same size as the sketch window.
+     * To resize an image 'b' to the size of the sketch window, use b.resize(width, height).
+     * Images used as background will ignore the current <b>tint()</b> setting.
+     * For the main drawing surface, the alpha value will be ignored. However,
+     * alpha can be used on PGraphics objects from <b>createGraphics()</b>. This is
+     * the only way to set all the pixels partially transparent, for instance.
+     * If the 'gray' parameter is passed in the function sets the background to a grayscale value, based on the
+     * current colorMode.
+     * <p>
+     * Note that background() should be called before any transformations occur,
+     * because some implementations may require the current transformation matrix
+     * to be identity before drawing.
+     *
+     * @param {int|float} gray    specifies a value between white and black
+     * @param {int|float} value1  red or hue value (depending on the current color mode)
+     * @param {int|float} value2  green or saturation value (depending on the current color mode)
+     * @param {int|float} value3  blue or brightness value (depending on the current color mode)
+     * @param {int|float} alpha   opacity of the background
+     * @param {Color} color       any value of the color datatype
+     * @param {int} hex           color value in hexadecimal notation (i.e. #FFCC00 or 0xFFFFCC00)
+     * @param {PImage} image      an instance of a PImage to use as a background
+     *
+     * @see #stroke()
+     * @see #fill()
+     * @see #tint()
+     * @see #colorMode()
+     */
+    var backgroundHelper = function(arg1, arg2, arg3, arg4) {
+      var obj;
+
+      if (arg1 instanceof PImage || arg1.__isPImage) {
+        obj = arg1;
+
+        if (!obj.loaded) {
+          throw "Error using image in background(): PImage not loaded.";
+        }
+        if(obj.width !== p.width || obj.height !== p.height){
+          throw "Background image must be the same dimensions as the canvas.";
+        }
+      } else {
+        obj = p.color(arg1, arg2, arg3, arg4);
+      }
+
+      backgroundObj = obj;
+    };
+
+    Drawing2D.prototype.background = function(arg1, arg2, arg3, arg4) {
+      if (arg1 !== undef) {
+        backgroundHelper(arg1, arg2, arg3, arg4);
+      }
+
+      if (backgroundObj instanceof PImage || backgroundObj.__isPImage) {
+        saveContext();
+        curContext.setTransform(1, 0, 0, 1, 0, 0);
+        p.image(backgroundObj, 0, 0);
+        restoreContext();
+      } else {
+        saveContext();
+        curContext.setTransform(1, 0, 0, 1, 0, 0);
+
+        // If the background is transparent
+        if (p.alpha(backgroundObj) !== colorModeA) {
+          curContext.clearRect(0,0, p.width, p.height);
+        }
+        curContext.fillStyle = p.color.toString(backgroundObj);
+        curContext.fillRect(0, 0, p.width, p.height);
+        isFillDirty = true;
+        restoreContext();
+      }
+    };
+
+    Drawing3D.prototype.background = function(arg1, arg2, arg3, arg4) {
+      if (arguments.length > 0) {
+        backgroundHelper(arg1, arg2, arg3, arg4);
+      }
+
+      var c = p.color.toGLArray(backgroundObj);
+      curContext.clearColor(c[0], c[1], c[2], c[3]);
+      curContext.clear(curContext.COLOR_BUFFER_BIT | curContext.DEPTH_BUFFER_BIT);
+
+      // An image as a background in 3D is not implemented yet
+    };
+
+    // Draws an image to the Canvas
+    /**
+    * Displays images to the screen. The images must be in the sketch's "data" directory to load correctly. Select "Add
+    * file..." from the "Sketch" menu to add the image. Processing currently works with GIF, JPEG, and Targa images. The
+    * color of an image may be modified with the tint() function and if a GIF has transparency, it will maintain its
+    * transparency. The img parameter specifies the image to display and the x and y parameters define the location of
+    * the image from its upper-left corner. The image is displayed at its original size unless the width and height
+    * parameters specify a different size. The imageMode() function changes the way the parameters work. A call to
+    * imageMode(CORNERS) will change the width and height parameters to define the x and y values of the opposite
+    * corner of the image.
+    *
+    * @param {PImage} img            the image to display
+    * @param {int|float} x           x-coordinate of the image
+    * @param {int|float} y           y-coordinate of the image
+    * @param {int|float} width       width to display the image
+    * @param {int|float} height      height to display the image
+    *
+    * @see loadImage
+    * @see PImage
+    * @see imageMode
+    * @see tint
+    * @see background
+    * @see alpha
+    */
+    Drawing2D.prototype.image = function(img, x, y, w, h) {
+      // Fix fractional positions
+      x = Math.round(x);
+      y = Math.round(y);
+
+      if (img.width > 0) {
+        var wid = w || img.width;
+        var hgt = h || img.height;
+
+        var bounds = imageModeConvert(x || 0, y || 0, w || img.width, h || img.height, arguments.length < 4);
+        var fastImage = !!img.sourceImg && curTint === null;
+        if (fastImage) {
+          var htmlElement = img.sourceImg;
+          if (img.__isDirty) {
+            img.updatePixels();
+          }
+          // Using HTML element's width and height in case if the image was resized.
+          curContext.drawImage(htmlElement, 0, 0,
+            htmlElement.width, htmlElement.height, bounds.x, bounds.y, bounds.w, bounds.h);
+        } else {
+          var obj = img.toImageData();
+
+          // Tint the image
+          if (curTint !== null) {
+            curTint(obj);
+            img.__isDirty = true;
+          }
+
+          curContext.drawImage(getCanvasData(obj).canvas, 0, 0,
+            img.width, img.height, bounds.x, bounds.y, bounds.w, bounds.h);
+        }
+      }
+    };
+
+    Drawing3D.prototype.image = function(img, x, y, w, h) {
+      if (img.width > 0) {
+        // Fix fractional positions
+        x = Math.round(x);
+        y = Math.round(y);
+        w = w || img.width;
+        h = h || img.height;
+
+        p.beginShape(p.QUADS);
+        p.texture(img);
+        p.vertex(x, y, 0, 0, 0);
+        p.vertex(x, y+h, 0, 0, h);
+        p.vertex(x+w, y+h, 0, w, h);
+        p.vertex(x+w, y, 0, w, 0);
+        p.endShape();
+      }
+    };
+
+    /**
+     * The tint() function sets the fill value for displaying images. Images can be tinted to
+     * specified colors or made transparent by setting the alpha.
+     * <br><br>To make an image transparent, but not change it's color,
+     * use white as the tint color and specify an alpha value. For instance,
+     * tint(255, 128) will make an image 50% transparent (unless
+     * <b>colorMode()</b> has been used).
+     *
+     * <br><br>When using hexadecimal notation to specify a color, use "#" or
+     * "0x" before the values (e.g. #CCFFAA, 0xFFCCFFAA). The # syntax uses six
+     * digits to specify a color (the way colors are specified in HTML and CSS).
+     * When using the hexadecimal notation starting with "0x", the hexadecimal
+     * value must be specified with eight characters; the first two characters
+     * define the alpha component and the remainder the red, green, and blue
+     * components.
+     * <br><br>The value for the parameter "gray" must be less than or equal
+     * to the current maximum value as specified by <b>colorMode()</b>.
+     * The default maximum value is 255.
+     * <br><br>The tint() method is also used to control the coloring of
+     * textures in 3D.
+     *
+     * @param {int|float} gray    any valid number
+     * @param {int|float} alpha    opacity of the image
+     * @param {int|float} value1  red or hue value
+     * @param {int|float} value2  green or saturation value
+     * @param {int|float} value3  blue or brightness value
+     * @param {int|float} color    any value of the color datatype
+     * @param {int} hex            color value in hexadecimal notation (i.e. #FFCC00 or 0xFFFFCC00)
+     *
+     * @see #noTint()
+     * @see #image()
+     */
+    p.tint = function(a1, a2, a3, a4) {
+      var tintColor = p.color(a1, a2, a3, a4);
+      var r = p.red(tintColor) / colorModeX;
+      var g = p.green(tintColor) / colorModeY;
+      var b = p.blue(tintColor) / colorModeZ;
+      var a = p.alpha(tintColor) / colorModeA;
+      curTint = function(obj) {
+        var data = obj.data,
+            length = 4 * obj.width * obj.height;
+        for (var i = 0; i < length;) {
+          data[i++] *= r;
+          data[i++] *= g;
+          data[i++] *= b;
+          data[i++] *= a;
+        }
+      };
+      // for overriding the color buffer when 3d rendering
+      curTint3d = function(data){
+        for (var i = 0; i < data.length;) {
+          data[i++] = r;
+          data[i++] = g;
+          data[i++] = b;
+          data[i++] = a;
+        }
+      };
+    };
+
+    /**
+     * The noTint() function removes the current fill value for displaying images and reverts to displaying images with their original hues.
+     *
+     * @see #tint()
+     * @see #image()
+     */
+    p.noTint = function() {
+      curTint = null;
+      curTint3d = null;
+    };
+
+    /**
+    * Copies a region of pixels from the display window to another area of the display window and copies a region of pixels from an
+    * image used as the srcImg  parameter into the display window. If the source and destination regions aren't the same size, it will
+    * automatically resize the source pixels to fit the specified target region. No alpha information is used in the process, however
+    * if the source image has an alpha channel set, it will be copied as well. This function ignores imageMode().
+    *
+    * @param {int} x            X coordinate of the source's upper left corner
+    * @param {int} y            Y coordinate of the source's upper left corner
+    * @param {int} width        source image width
+    * @param {int} height       source image height
+    * @param {int} dx           X coordinate of the destination's upper left corner
+    * @param {int} dy           Y coordinate of the destination's upper left corner
+    * @param {int} dwidth       destination image width
+    * @param {int} dheight      destination image height
+    * @param {PImage} srcImg    image variable referring to the source image
+    *
+    * @see blend
+    * @see get
+    */
+    p.copy = function(src, sx, sy, sw, sh, dx, dy, dw, dh) {
+      if (dh === undef) {
+        // shift everything, and introduce p
+        dh = dw;
+        dw = dy;
+        dy = dx;
+        dx = sh;
+        sh = sw;
+        sw = sy;
+        sy = sx;
+        sx = src;
+        src = p;
+      }
+      p.blend(src, sx, sy, sw, sh, dx, dy, dw, dh, PConstants.REPLACE);
+    };
+
+    /**
+    * Blends a region of pixels from one image into another (or in itself again) with full alpha channel support. There
+    * is a choice of the following modes to blend the source pixels (A) with the ones of pixels in the destination image (B):
+    * BLEND - linear interpolation of colours: C = A*factor + B
+    * ADD - additive blending with white clip: C = min(A*factor + B, 255)
+    * SUBTRACT - subtractive blending with black clip: C = max(B - A*factor, 0)
+    * DARKEST - only the darkest colour succeeds: C = min(A*factor, B)
+    * LIGHTEST - only the lightest colour succeeds: C = max(A*factor, B)
+    * DIFFERENCE - subtract colors from underlying image.
+    * EXCLUSION - similar to DIFFERENCE, but less extreme.
+    * MULTIPLY - Multiply the colors, result will always be darker.
+    * SCREEN - Opposite multiply, uses inverse values of the colors.
+    * OVERLAY - A mix of MULTIPLY and SCREEN. Multiplies dark values, and screens light values.
+    * HARD_LIGHT - SCREEN when greater than 50% gray, MULTIPLY when lower.
+    * SOFT_LIGHT - Mix of DARKEST and LIGHTEST. Works like OVERLAY, but not as harsh.
+    * DODGE - Lightens light tones and increases contrast, ignores darks. Called "Color Dodge" in Illustrator and Photoshop.
+    * BURN - Darker areas are applied, increasing contrast, ignores lights. Called "Color Burn" in Illustrator and Photoshop.
+    * All modes use the alpha information (highest byte) of source image pixels as the blending factor. If the source and
+    * destination regions are different sizes, the image will be automatically resized to match the destination size. If the
+    * srcImg parameter is not used, the display window is used as the source image.  This function ignores imageMode().
+    *
+    * @param {int} x            X coordinate of the source's upper left corner
+    * @param {int} y            Y coordinate of the source's upper left corner
+    * @param {int} width        source image width
+    * @param {int} height       source image height
+    * @param {int} dx           X coordinate of the destination's upper left corner
+    * @param {int} dy           Y coordinate of the destination's upper left corner
+    * @param {int} dwidth       destination image width
+    * @param {int} dheight      destination image height
+    * @param {PImage} srcImg    image variable referring to the source image
+    * @param {PImage} MODE      Either BLEND, ADD, SUBTRACT, LIGHTEST, DARKEST, DIFFERENCE, EXCLUSION, MULTIPLY, SCREEN,
+    *                           OVERLAY, HARD_LIGHT, SOFT_LIGHT, DODGE, BURN
+    * @see filter
+    */
+    p.blend = function(src, sx, sy, sw, sh, dx, dy, dw, dh, mode, pimgdest) {
+      if (src.isRemote) {
+        throw "Image is loaded remotely. Cannot blend image.";
+      }
+
+      if (mode === undef) {
+        // shift everything, and introduce p
+        mode = dh;
+        dh = dw;
+        dw = dy;
+        dy = dx;
+        dx = sh;
+        sh = sw;
+        sw = sy;
+        sy = sx;
+        sx = src;
+        src = p;
+      }
+
+      var sx2 = sx + sw,
+        sy2 = sy + sh,
+        dx2 = dx + dw,
+        dy2 = dy + dh,
+        dest = pimgdest || p;
+
+      // check if pimgdest is there and pixels, if so this was a call from pimg.blend
+      if (pimgdest === undef || mode === undef) {
+        p.loadPixels();
+      }
+
+      src.loadPixels();
+
+      if (src === p && p.intersect(sx, sy, sx2, sy2, dx, dy, dx2, dy2)) {
+        p.blit_resize(p.get(sx, sy, sx2 - sx, sy2 - sy), 0, 0, sx2 - sx - 1, sy2 - sy - 1,
+                      dest.imageData.data, dest.width, dest.height, dx, dy, dx2, dy2, mode);
+      } else {
+        p.blit_resize(src, sx, sy, sx2, sy2, dest.imageData.data, dest.width, dest.height, dx, dy, dx2, dy2, mode);
+      }
+
+      if (pimgdest === undef) {
+        p.updatePixels();
+      }
+    };
+
+    // helper function for filter()
+    var buildBlurKernel = function(r) {
+      var radius = p.floor(r * 3.5), i, radiusi;
+      radius = (radius < 1) ? 1 : ((radius < 248) ? radius : 248);
+      if (p.shared.blurRadius !== radius) {
+        p.shared.blurRadius = radius;
+        p.shared.blurKernelSize = 1 + (p.shared.blurRadius<<1);
+        p.shared.blurKernel = new Float32Array(p.shared.blurKernelSize);
+        var sharedBlurKernal = p.shared.blurKernel;
+        var sharedBlurKernelSize = p.shared.blurKernelSize;
+        var sharedBlurRadius = p.shared.blurRadius;
+        // init blurKernel
+        for (i = 0; i < sharedBlurKernelSize; i++) {
+          sharedBlurKernal[i] = 0;
+        }
+        var radiusiSquared = (radius - 1) * (radius - 1);
+        for (i = 1; i < radius; i++) {
+          sharedBlurKernal[radius + i] = sharedBlurKernal[radiusi] = radiusiSquared;
+        }
+        sharedBlurKernal[radius] = radius * radius;
+      }
+    };
+
+    var blurARGB = function(r, aImg) {
+      var sum, cr, cg, cb, ca, c, m;
+      var read, ri, ym, ymi, bk0;
+      var wh = aImg.pixels.getLength();
+      var r2 = new Float32Array(wh);
+      var g2 = new Float32Array(wh);
+      var b2 = new Float32Array(wh);
+      var a2 = new Float32Array(wh);
+      var yi = 0;
+      var x, y, i, offset;
+
+      buildBlurKernel(r);
+
+      var aImgHeight = aImg.height;
+      var aImgWidth = aImg.width;
+      var sharedBlurKernelSize = p.shared.blurKernelSize;
+      var sharedBlurRadius = p.shared.blurRadius;
+      var sharedBlurKernal = p.shared.blurKernel;
+      var pix = aImg.imageData.data;
+
+      for (y = 0; y < aImgHeight; y++) {
+        for (x = 0; x < aImgWidth; x++) {
+          cb = cg = cr = ca = sum = 0;
+          read = x - sharedBlurRadius;
+          if (read<0) {
+            bk0 = -read;
+            read = 0;
+          } else {
+            if (read >= aImgWidth) {
+              break;
+            }
+            bk0=0;
+          }
+          for (i = bk0; i < sharedBlurKernelSize; i++) {
+            if (read >= aImgWidth) {
+              break;
+            }
+            offset = (read + yi) *4;
+            m = sharedBlurKernal[i];
+            ca += m * pix[offset + 3];
+            cr += m * pix[offset];
+            cg += m * pix[offset + 1];
+            cb += m * pix[offset + 2];
+            sum += m;
+            read++;
+          }
+          ri = yi + x;
+          a2[ri] = ca / sum;
+          r2[ri] = cr / sum;
+          g2[ri] = cg / sum;
+          b2[ri] = cb / sum;
+        }
+        yi += aImgWidth;
+      }
+
+      yi = 0;
+      ym = -sharedBlurRadius;
+      ymi = ym*aImgWidth;
+
+      for (y = 0; y < aImgHeight; y++) {
+        for (x = 0; x < aImgWidth; x++) {
+          cb = cg = cr = ca = sum = 0;
+          if (ym<0) {
+            bk0 = ri = -ym;
+            read = x;
+          } else {
+            if (ym >= aImgHeight) {
+              break;
+            }
+            bk0 = 0;
+            ri = ym;
+            read = x + ymi;
+          }
+          for (i = bk0; i < sharedBlurKernelSize; i++) {
+            if (ri >= aImgHeight) {
+              break;
+            }
+            m = sharedBlurKernal[i];
+            ca += m * a2[read];
+            cr += m * r2[read];
+            cg += m * g2[read];
+            cb += m * b2[read];
+            sum += m;
+            ri++;
+            read += aImgWidth;
+          }
+          offset = (x + yi) *4;
+          pix[offset] = cr / sum;
+          pix[offset + 1] = cg / sum;
+          pix[offset + 2] = cb / sum;
+          pix[offset + 3] = ca / sum;
+        }
+        yi += aImgWidth;
+        ymi += aImgWidth;
+        ym++;
+      }
+    };
+
+    // helper funtion for ERODE and DILATE modes of filter()
+    var dilate = function(isInverted, aImg) {
+      var currIdx = 0;
+      var maxIdx = aImg.pixels.getLength();
+      var out = new Int32Array(maxIdx);
+      var currRowIdx, maxRowIdx, colOrig, colOut, currLum;
+      var idxRight, idxLeft, idxUp, idxDown,
+          colRight, colLeft, colUp, colDown,
+          lumRight, lumLeft, lumUp, lumDown;
+
+      if (!isInverted) {
+        // erosion (grow light areas)
+        while (currIdx<maxIdx) {
+          currRowIdx = currIdx;
+          maxRowIdx = currIdx + aImg.width;
+          while (currIdx < maxRowIdx) {
+            colOrig = colOut = aImg.pixels.getPixel(currIdx);
+            idxLeft = currIdx - 1;
+            idxRight = currIdx + 1;
+            idxUp = currIdx - aImg.width;
+            idxDown = currIdx + aImg.width;
+            if (idxLeft < currRowIdx) {
+              idxLeft = currIdx;
+            }
+            if (idxRight >= maxRowIdx) {
+              idxRight = currIdx;
+            }
+            if (idxUp < 0) {
+              idxUp = 0;
+            }
+            if (idxDown >= maxIdx) {
+              idxDown = currIdx;
+            }
+            colUp = aImg.pixels.getPixel(idxUp);
+            colLeft = aImg.pixels.getPixel(idxLeft);
+            colDown = aImg.pixels.getPixel(idxDown);
+            colRight = aImg.pixels.getPixel(idxRight);
+
+            // compute luminance
+            currLum = 77*(colOrig>>16&0xff) + 151*(colOrig>>8&0xff) + 28*(colOrig&0xff);
+            lumLeft = 77*(colLeft>>16&0xff) + 151*(colLeft>>8&0xff) + 28*(colLeft&0xff);
+            lumRight = 77*(colRight>>16&0xff) + 151*(colRight>>8&0xff) + 28*(colRight&0xff);
+            lumUp = 77*(colUp>>16&0xff) + 151*(colUp>>8&0xff) + 28*(colUp&0xff);
+            lumDown = 77*(colDown>>16&0xff) + 151*(colDown>>8&0xff) + 28*(colDown&0xff);
+
+            if (lumLeft > currLum) {
+              colOut = colLeft;
+              currLum = lumLeft;
+            }
+            if (lumRight > currLum) {
+              colOut = colRight;
+              currLum = lumRight;
+            }
+            if (lumUp > currLum) {
+              colOut = colUp;
+              currLum = lumUp;
+            }
+            if (lumDown > currLum) {
+              colOut = colDown;
+              currLum = lumDown;
+            }
+            out[currIdx++] = colOut;
+          }
+        }
+      } else {
+        // dilate (grow dark areas)
+        while (currIdx < maxIdx) {
+          currRowIdx = currIdx;
+          maxRowIdx = currIdx + aImg.width;
+          while (currIdx < maxRowIdx) {
+            colOrig = colOut = aImg.pixels.getPixel(currIdx);
+            idxLeft = currIdx - 1;
+            idxRight = currIdx + 1;
+            idxUp = currIdx - aImg.width;
+            idxDown = currIdx + aImg.width;
+            if (idxLeft < currRowIdx) {
+              idxLeft = currIdx;
+            }
+            if (idxRight >= maxRowIdx) {
+              idxRight = currIdx;
+            }
+            if (idxUp < 0) {
+              idxUp = 0;
+            }
+            if (idxDown >= maxIdx) {
+              idxDown = currIdx;
+            }
+            colUp = aImg.pixels.getPixel(idxUp);
+            colLeft = aImg.pixels.getPixel(idxLeft);
+            colDown = aImg.pixels.getPixel(idxDown);
+            colRight = aImg.pixels.getPixel(idxRight);
+
+            // compute luminance
+            currLum = 77*(colOrig>>16&0xff) + 151*(colOrig>>8&0xff) + 28*(colOrig&0xff);
+            lumLeft = 77*(colLeft>>16&0xff) + 151*(colLeft>>8&0xff) + 28*(colLeft&0xff);
+            lumRight = 77*(colRight>>16&0xff) + 151*(colRight>>8&0xff) + 28*(colRight&0xff);
+            lumUp = 77*(colUp>>16&0xff) + 151*(colUp>>8&0xff) + 28*(colUp&0xff);
+            lumDown = 77*(colDown>>16&0xff) + 151*(colDown>>8&0xff) + 28*(colDown&0xff);
+
+            if (lumLeft < currLum) {
+              colOut = colLeft;
+              currLum = lumLeft;
+            }
+            if (lumRight < currLum) {
+              colOut = colRight;
+              currLum = lumRight;
+            }
+            if (lumUp < currLum) {
+              colOut = colUp;
+              currLum = lumUp;
+            }
+            if (lumDown < currLum) {
+              colOut = colDown;
+              currLum = lumDown;
+            }
+            out[currIdx++]=colOut;
+          }
+        }
+      }
+      aImg.pixels.set(out);
+      //p.arraycopy(out,0,pixels,0,maxIdx);
+    };
+
+    /**
+    * Filters the display window as defined by one of the following modes:
+    * THRESHOLD - converts the image to black and white pixels depending if they are above or below the threshold
+    * defined by the level parameter. The level must be between 0.0 (black) and 1.0(white). If no level is specified, 0.5 is used.
+    * GRAY - converts any colors in the image to grayscale equivalents
+    * INVERT - sets each pixel to its inverse value
+    * POSTERIZE - limits each channel of the image to the number of colors specified as the level parameter
+    * BLUR - executes a Guassian blur with the level parameter specifying the extent of the blurring. If no level parameter is
+    * used, the blur is equivalent to Guassian blur of radius 1.
+    * OPAQUE - sets the alpha channel to entirely opaque.
+    * ERODE - reduces the light areas with the amount defined by the level parameter.
+    * DILATE - increases the light areas with the amount defined by the level parameter.
+    *
+    * @param {MODE} MODE          Either THRESHOLD, GRAY, INVERT, POSTERIZE, BLUR, OPAQUE, ERODE, or DILATE
+    * @param {int|float} level    defines the quality of the filter
+    *
+    * @see blend
+    */
+    p.filter = function(kind, param, aImg){
+      var img, col, lum, i;
+
+      if (arguments.length === 3) {
+        aImg.loadPixels();
+        img = aImg;
+      } else {
+        p.loadPixels();
+        img = p;
+      }
+
+      if (param === undef) {
+        param = null;
+      }
+      if (img.isRemote) { // Remote images cannot access imageData
+        throw "Image is loaded remotely. Cannot filter image.";
+      }
+      // begin filter process
+      var imglen = img.pixels.getLength();
+      switch (kind) {
+        case PConstants.BLUR:
+          var radius = param || 1; // if no param specified, use 1 (default for p5)
+          blurARGB(radius, img);
+          break;
+
+        case PConstants.GRAY:
+          if (img.format === PConstants.ALPHA) { //trouble
+            // for an alpha image, convert it to an opaque grayscale
+            for (i = 0; i < imglen; i++) {
+              col = 255 - img.pixels.getPixel(i);
+              img.pixels.setPixel(i,(0xff000000 | (col << 16) | (col << 8) | col));
+            }
+            img.format = PConstants.RGB; //trouble
+          } else {
+            for (i = 0; i < imglen; i++) {
+              col = img.pixels.getPixel(i);
+              lum = (77*(col>>16&0xff) + 151*(col>>8&0xff) + 28*(col&0xff))>>8;
+              img.pixels.setPixel(i,((col & PConstants.ALPHA_MASK) | lum<<16 | lum<<8 | lum));
+            }
+          }
+          break;
+
+        case PConstants.INVERT:
+          for (i = 0; i < imglen; i++) {
+            img.pixels.setPixel(i, (img.pixels.getPixel(i) ^ 0xffffff));
+          }
+          break;
+
+        case PConstants.POSTERIZE:
+          if (param === null) {
+            throw "Use filter(POSTERIZE, int levels) instead of filter(POSTERIZE)";
+          }
+          var levels = p.floor(param);
+          if ((levels < 2) || (levels > 255)) {
+            throw "Levels must be between 2 and 255 for filter(POSTERIZE, levels)";
+          }
+          var levels1 = levels - 1;
+          for (i = 0; i < imglen; i++) {
+            var rlevel = (img.pixels.getPixel(i) >> 16) & 0xff;
+            var glevel = (img.pixels.getPixel(i) >> 8) & 0xff;
+            var blevel = img.pixels.getPixel(i) & 0xff;
+            rlevel = (((rlevel * levels) >> 8) * 255) / levels1;
+            glevel = (((glevel * levels) >> 8) * 255) / levels1;
+            blevel = (((blevel * levels) >> 8) * 255) / levels1;
+            img.pixels.setPixel(i, ((0xff000000 & img.pixels.getPixel(i)) | (rlevel << 16) | (glevel << 8) | blevel));
+          }
+          break;
+
+        case PConstants.OPAQUE:
+          for (i = 0; i < imglen; i++) {
+            img.pixels.setPixel(i, (img.pixels.getPixel(i) | 0xff000000));
+          }
+          img.format = PConstants.RGB; //trouble
+          break;
+
+        case PConstants.THRESHOLD:
+          if (param === null) {
+            param = 0.5;
+          }
+          if ((param < 0) || (param > 1)) {
+            throw "Level must be between 0 and 1 for filter(THRESHOLD, level)";
+          }
+          var thresh = p.floor(param * 255);
+          for (i = 0; i < imglen; i++) {
+            var max = p.max((img.pixels.getPixel(i) & PConstants.RED_MASK) >> 16, p.max((img.pixels.getPixel(i) & PConstants.GREEN_MASK) >> 8, (img.pixels.getPixel(i) & PConstants.BLUE_MASK)));
+            img.pixels.setPixel(i, ((img.pixels.getPixel(i) & PConstants.ALPHA_MASK) | ((max < thresh) ? 0x000000 : 0xffffff)));
+          }
+          break;
+
+        case PConstants.ERODE:
+          dilate(true, img);
+          break;
+
+        case PConstants.DILATE:
+          dilate(false, img);
+          break;
+      }
+      img.updatePixels();
+    };
+
+
+    // shared variables for blit_resize(), filter_new_scanline(), filter_bilinear(), filter()
+    // change this in the future to not be exposed to p
+    p.shared = {
+      fracU: 0,
+      ifU: 0,
+      fracV: 0,
+      ifV: 0,
+      u1: 0,
+      u2: 0,
+      v1: 0,
+      v2: 0,
+      sX: 0,
+      sY: 0,
+      iw: 0,
+      iw1: 0,
+      ih1: 0,
+      ul: 0,
+      ll: 0,
+      ur: 0,
+      lr: 0,
+      cUL: 0,
+      cLL: 0,
+      cUR: 0,
+      cLR: 0,
+      srcXOffset: 0,
+      srcYOffset: 0,
+      r: 0,
+      g: 0,
+      b: 0,
+      a: 0,
+      srcBuffer: null,
+      blurRadius: 0,
+      blurKernelSize: 0,
+      blurKernel: null
+    };
+
+    p.intersect = function(sx1, sy1, sx2, sy2, dx1, dy1, dx2, dy2) {
+      var sw = sx2 - sx1 + 1;
+      var sh = sy2 - sy1 + 1;
+      var dw = dx2 - dx1 + 1;
+      var dh = dy2 - dy1 + 1;
+      if (dx1 < sx1) {
+        dw += dx1 - sx1;
+        if (dw > sw) {
+          dw = sw;
+        }
+      } else {
+        var w = sw + sx1 - dx1;
+        if (dw > w) {
+          dw = w;
+        }
+      }
+      if (dy1 < sy1) {
+        dh += dy1 - sy1;
+        if (dh > sh) {
+          dh = sh;
+        }
+      } else {
+        var h = sh + sy1 - dy1;
+        if (dh > h) {
+          dh = h;
+        }
+      }
+      return ! (dw <= 0 || dh <= 0);
+    };
+
+    var blendFuncs = {};
+    blendFuncs[PConstants.BLEND] = p.modes.blend;
+    blendFuncs[PConstants.ADD] = p.modes.add;
+    blendFuncs[PConstants.SUBTRACT] = p.modes.subtract;
+    blendFuncs[PConstants.LIGHTEST] = p.modes.lightest;
+    blendFuncs[PConstants.DARKEST] = p.modes.darkest;
+    blendFuncs[PConstants.REPLACE] = p.modes.replace;
+    blendFuncs[PConstants.DIFFERENCE] = p.modes.difference;
+    blendFuncs[PConstants.EXCLUSION] = p.modes.exclusion;
+    blendFuncs[PConstants.MULTIPLY] = p.modes.multiply;
+    blendFuncs[PConstants.SCREEN] = p.modes.screen;
+    blendFuncs[PConstants.OVERLAY] = p.modes.overlay;
+    blendFuncs[PConstants.HARD_LIGHT] = p.modes.hard_light;
+    blendFuncs[PConstants.SOFT_LIGHT] = p.modes.soft_light;
+    blendFuncs[PConstants.DODGE] = p.modes.dodge;
+    blendFuncs[PConstants.BURN] = p.modes.burn;
+
+    p.blit_resize = function(img, srcX1, srcY1, srcX2, srcY2, destPixels,
+                             screenW, screenH, destX1, destY1, destX2, destY2, mode) {
+      var x, y;
+      if (srcX1 < 0) {
+        srcX1 = 0;
+      }
+      if (srcY1 < 0) {
+        srcY1 = 0;
+      }
+      if (srcX2 >= img.width) {
+        srcX2 = img.width - 1;
+      }
+      if (srcY2 >= img.height) {
+        srcY2 = img.height - 1;
+      }
+      var srcW = srcX2 - srcX1;
+      var srcH = srcY2 - srcY1;
+      var destW = destX2 - destX1;
+      var destH = destY2 - destY1;
+
+      if (destW <= 0 || destH <= 0 || srcW <= 0 || srcH <= 0 || destX1 >= screenW ||
+          destY1 >= screenH || srcX1 >= img.width || srcY1 >= img.height) {
+        return;
+      }
+
+      var dx = Math.floor(srcW / destW * PConstants.PRECISIONF);
+      var dy = Math.floor(srcH / destH * PConstants.PRECISIONF);
+
+      var pshared = p.shared;
+
+      pshared.srcXOffset = Math.floor(destX1 < 0 ? -destX1 * dx : srcX1 * PConstants.PRECISIONF);
+      pshared.srcYOffset = Math.floor(destY1 < 0 ? -destY1 * dy : srcY1 * PConstants.PRECISIONF);
+      if (destX1 < 0) {
+        destW += destX1;
+        destX1 = 0;
+      }
+      if (destY1 < 0) {
+        destH += destY1;
+        destY1 = 0;
+      }
+      destW = Math.min(destW, screenW - destX1);
+      destH = Math.min(destH, screenH - destY1);
+
+      var destOffset = destY1 * screenW + destX1;
+      var destColor;
+
+      pshared.srcBuffer = img.imageData.data;
+      pshared.iw = img.width;
+      pshared.iw1 = img.width - 1;
+      pshared.ih1 = img.height - 1;
+
+      // cache for speed
+      var filterBilinear = p.filter_bilinear,
+        filterNewScanline = p.filter_new_scanline,
+        blendFunc = blendFuncs[mode],
+        blendedColor,
+        idx,
+        cULoffset,
+        cURoffset,
+        cLLoffset,
+        cLRoffset,
+        ALPHA_MASK = PConstants.ALPHA_MASK,
+        RED_MASK = PConstants.RED_MASK,
+        GREEN_MASK = PConstants.GREEN_MASK,
+        BLUE_MASK = PConstants.BLUE_MASK,
+        PREC_MAXVAL = PConstants.PREC_MAXVAL,
+        PRECISIONB = PConstants.PRECISIONB,
+        PREC_RED_SHIFT = PConstants.PREC_RED_SHIFT,
+        PREC_ALPHA_SHIFT = PConstants.PREC_ALPHA_SHIFT,
+        srcBuffer = pshared.srcBuffer,
+        min = Math.min;
+
+      for (y = 0; y < destH; y++) {
+
+        pshared.sX = pshared.srcXOffset;
+        pshared.fracV = pshared.srcYOffset & PREC_MAXVAL;
+        pshared.ifV = PREC_MAXVAL - pshared.fracV;
+        pshared.v1 = (pshared.srcYOffset >> PRECISIONB) * pshared.iw;
+        pshared.v2 = min((pshared.srcYOffset >> PRECISIONB) + 1, pshared.ih1) * pshared.iw;
+
+        for (x = 0; x < destW; x++) {
+          idx = (destOffset + x) * 4;
+
+          destColor = (destPixels[idx + 3] << 24) &
+                      ALPHA_MASK | (destPixels[idx] << 16) &
+                      RED_MASK   | (destPixels[idx + 1] << 8) &
+                      GREEN_MASK |  destPixels[idx + 2] & BLUE_MASK;
+
+          pshared.fracU = pshared.sX & PREC_MAXVAL;
+          pshared.ifU = PREC_MAXVAL - pshared.fracU;
+          pshared.ul = (pshared.ifU * pshared.ifV) >> PRECISIONB;
+          pshared.ll = (pshared.ifU * pshared.fracV) >> PRECISIONB;
+          pshared.ur = (pshared.fracU * pshared.ifV) >> PRECISIONB;
+          pshared.lr = (pshared.fracU * pshared.fracV) >> PRECISIONB;
+          pshared.u1 = (pshared.sX >> PRECISIONB);
+          pshared.u2 = min(pshared.u1 + 1, pshared.iw1);
+
+          cULoffset = (pshared.v1 + pshared.u1) * 4;
+          cURoffset = (pshared.v1 + pshared.u2) * 4;
+          cLLoffset = (pshared.v2 + pshared.u1) * 4;
+          cLRoffset = (pshared.v2 + pshared.u2) * 4;
+
+          pshared.cUL = (srcBuffer[cULoffset + 3] << 24) &
+                        ALPHA_MASK | (srcBuffer[cULoffset] << 16) &
+                        RED_MASK   | (srcBuffer[cULoffset + 1] << 8) &
+                        GREEN_MASK |  srcBuffer[cULoffset + 2] & BLUE_MASK;
+
+          pshared.cUR = (srcBuffer[cURoffset + 3] << 24) &
+                        ALPHA_MASK | (srcBuffer[cURoffset] << 16) &
+                        RED_MASK   | (srcBuffer[cURoffset + 1] << 8) &
+                        GREEN_MASK |  srcBuffer[cURoffset + 2] & BLUE_MASK;
+
+          pshared.cLL = (srcBuffer[cLLoffset + 3] << 24) &
+                        ALPHA_MASK | (srcBuffer[cLLoffset] << 16) &
+                        RED_MASK   | (srcBuffer[cLLoffset + 1] << 8) &
+                        GREEN_MASK |  srcBuffer[cLLoffset + 2] & BLUE_MASK;
+
+          pshared.cLR = (srcBuffer[cLRoffset + 3] << 24) &
+                        ALPHA_MASK | (srcBuffer[cLRoffset] << 16) &
+                        RED_MASK   | (srcBuffer[cLRoffset + 1] << 8) &
+                        GREEN_MASK |  srcBuffer[cLRoffset + 2] & BLUE_MASK;
+
+          pshared.r = ((pshared.ul * ((pshared.cUL & RED_MASK) >> 16) +
+                       pshared.ll * ((pshared.cLL & RED_MASK) >> 16) +
+                       pshared.ur * ((pshared.cUR & RED_MASK) >> 16) +
+                       pshared.lr * ((pshared.cLR & RED_MASK) >> 16)) << PREC_RED_SHIFT) & RED_MASK;
+          pshared.g = ((pshared.ul * (pshared.cUL & GREEN_MASK) +
+                       pshared.ll * (pshared.cLL & GREEN_MASK) +
+                       pshared.ur * (pshared.cUR & GREEN_MASK) +
+                       pshared.lr * (pshared.cLR & GREEN_MASK)) >>> PRECISIONB) & GREEN_MASK;
+          pshared.b = (pshared.ul * (pshared.cUL & BLUE_MASK) +
+                       pshared.ll * (pshared.cLL & BLUE_MASK) +
+                       pshared.ur * (pshared.cUR & BLUE_MASK) +
+                       pshared.lr * (pshared.cLR & BLUE_MASK)) >>> PRECISIONB;
+          pshared.a = ((pshared.ul * ((pshared.cUL & ALPHA_MASK) >>> 24) +
+                       pshared.ll * ((pshared.cLL & ALPHA_MASK) >>> 24) +
+                       pshared.ur * ((pshared.cUR & ALPHA_MASK) >>> 24) +
+                       pshared.lr * ((pshared.cLR & ALPHA_MASK) >>> 24)) << PREC_ALPHA_SHIFT) & ALPHA_MASK;
+
+          blendedColor = blendFunc(destColor, (pshared.a | pshared.r | pshared.g | pshared.b));
+
+          destPixels[idx]     = (blendedColor & RED_MASK) >>> 16;
+          destPixels[idx + 1] = (blendedColor & GREEN_MASK) >>> 8;
+          destPixels[idx + 2] = (blendedColor & BLUE_MASK);
+          destPixels[idx + 3] = (blendedColor & ALPHA_MASK) >>> 24;
+
+          pshared.sX += dx;
+        }
+        destOffset += screenW;
+        pshared.srcYOffset += dy;
+      }
+    };
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Font handling
+    ////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * loadFont() Loads a font into a variable of type PFont.
+     *
+     * @param {String} name filename of the font to load
+     * @param {int|float} size option font size (used internally)
+     *
+     * @returns {PFont} new PFont object
+     *
+     * @see #PFont
+     * @see #textFont
+     * @see #text
+     * @see #createFont
+     */
+    p.loadFont = function(name, size) {
+      if (name === undef) {
+        throw("font name required in loadFont.");
+      }
+      if (name.indexOf(".svg") === -1) {
+        if (size === undef) {
+          size = curTextFont.size;
+        }
+        return PFont.get(name, size);
+      }
+      // If the font is a glyph, calculate by SVG table
+      var font = p.loadGlyphs(name);
+
+      return {
+        name: name,
+        css: '12px sans-serif',
+        glyph: true,
+        units_per_em: font.units_per_em,
+        horiz_adv_x: 1 / font.units_per_em * font.horiz_adv_x,
+        ascent: font.ascent,
+        descent: font.descent,
+        width: function(str) {
+          var width = 0;
+          var len = str.length;
+          for (var i = 0; i < len; i++) {
+            try {
+              width += parseFloat(p.glyphLook(p.glyphTable[name], str[i]).horiz_adv_x);
+            }
+            catch(e) {
+              Processing.debug(e);
+            }
+          }
+          return width / p.glyphTable[name].units_per_em;
+        }
+      };
+    };
+
+    /**
+     * createFont() Loads a font into a variable of type PFont.
+     * Smooth and charset are ignored in Processing.js.
+     *
+     * @param {String}    name    filename of the font to load
+     * @param {int|float} size    font size in pixels
+     * @param {boolean}   smooth  not used in Processing.js
+     * @param {char[]}    charset not used in Processing.js
+     *
+     * @returns {PFont} new PFont object
+     *
+     * @see #PFont
+     * @see #textFont
+     * @see #text
+     * @see #loadFont
+     */
+    p.createFont = function(name, size) {
+      // because Processing.js only deals with real fonts,
+      // createFont is simply a wrapper for loadFont/2
+      return p.loadFont(name, size);
+    };
+
+    /**
+     * textFont() Sets the current font.
+     *
+     * @param {PFont}     pfont the PFont to load as current text font
+     * @param {int|float} size optional font size in pixels
+     *
+     * @see #createFont
+     * @see #loadFont
+     * @see #PFont
+     * @see #text
+     */
+    p.textFont = function(pfont, size) {
+      if (size !== undef) {
+        // If we're using an SVG glyph font, don't load from cache
+        if (!pfont.glyph) {
+          pfont = PFont.get(pfont.name, size);
+        }
+        curTextSize = size;
+      }
+      curTextFont = pfont;
+      curFontName = curTextFont.name;
+      curTextAscent = curTextFont.ascent;
+      curTextDescent = curTextFont.descent;
+      curTextLeading = curTextFont.leading;
+      var curContext = drawing.$ensureContext();
+      curContext.font = curTextFont.css;
+    };
+
+    /**
+     * textSize() Sets the current font size in pixels.
+     *
+     * @param {int|float} size font size in pixels
+     *
+     * @see #textFont
+     * @see #loadFont
+     * @see #PFont
+     * @see #text
+     */
+    p.textSize = function(size) {
+      curTextFont = PFont.get(curFontName, size);
+      curTextSize = size;
+      // recache metrics
+      curTextAscent = curTextFont.ascent;
+      curTextDescent = curTextFont.descent;
+      curTextLeading = curTextFont.leading;
+      var curContext = drawing.$ensureContext();
+      curContext.font = curTextFont.css;
+    };
+
+    /**
+     * textAscent() returns the maximum height a character extends above the baseline of the
+     * current font at its current size, in pixels.
+     *
+     * @returns {float} height of the current font above the baseline, at its current size, in pixels
+     *
+     * @see #textDescent
+     */
+    p.textAscent = function() {
+      return curTextAscent;
+    };
+
+    /**
+     * textDescent() returns the maximum depth a character will protrude below the baseline of
+     * the current font at its current size, in pixels.
+     *
+     * @returns {float} depth of the current font below the baseline, at its current size, in pixels
+     *
+     * @see #textAscent
+     */
+    p.textDescent = function() {
+      return curTextDescent;
+    };
+
+    /**
+     * textLeading() Sets the current font's leading, which is the distance
+     * from baseline to baseline over consecutive lines, with additional vertical
+     * spacing taking into account. Usually this value is 1.2 or 1.25 times the
+     * textsize, but this value can be changed to effect vertically compressed
+     * or stretched text.
+     *
+     * @param {int|float} the desired baseline-to-baseline size in pixels
+     */
+    p.textLeading = function(leading) {
+      curTextLeading = leading;
+    };
+
+    /**
+     * textAlign() Sets the current alignment for drawing text.
+     *
+     * @param {int} ALIGN  Horizontal alignment, either LEFT, CENTER, or RIGHT
+     * @param {int} YALIGN optional vertical alignment, either TOP, BOTTOM, CENTER, or BASELINE
+     *
+     * @see #loadFont
+     * @see #PFont
+     * @see #text
+     */
+    p.textAlign = function(xalign, yalign) {
+      horizontalTextAlignment = xalign;
+      verticalTextAlignment = yalign || PConstants.BASELINE;
+    };
+
+    /**
+     * toP5String converts things with arbitrary data type into
+     * string values, for text rendering.
+     *
+     * @param {any} any object that can be converted into a string
+     *
+     * @return {String} the string representation of the input
+     */
+    function toP5String(obj) {
+      if(obj instanceof String) {
+        return obj;
+      }
+      if(typeof obj === 'number') {
+        // check if an int
+        if(obj === (0 | obj)) {
+          return obj.toString();
+        }
+        return p.nf(obj, 0, 3);
+      }
+      if(obj === null || obj === undef) {
+        return "";
+      }
+      return obj.toString();
+    }
+
+    /**
+     * textWidth() Calculates and returns the width of any character or text string in pixels.
+     *
+     * @param {char|String} str char or String to be measured
+     *
+     * @return {float} width of char or String in pixels
+     *
+     * @see #loadFont
+     * @see #PFont
+     * @see #text
+     * @see #textFont
+     */
+    Drawing2D.prototype.textWidth = function(str) {
+      var lines = toP5String(str).split(/\r?\n/g), width = 0;
+      var i, linesCount = lines.length;
+
+      curContext.font = curTextFont.css;
+      for (i = 0; i < linesCount; ++i) {
+        width = Math.max(width, curTextFont.measureTextWidth(lines[i]));
+      }
+      return width | 0;
+    };
+
+    Drawing3D.prototype.textWidth = function(str) {
+      var lines = toP5String(str).split(/\r?\n/g), width = 0;
+      var i, linesCount = lines.length;
+      if (textcanvas === undef) {
+        textcanvas = document.createElement("canvas");
+      }
+
+      var textContext = textcanvas.getContext("2d");
+      textContext.font = curTextFont.css;
+
+      for (i = 0; i < linesCount; ++i) {
+        width = Math.max(width, textContext.measureText(lines[i]).width);
+      }
+      return width | 0;
+    };
+
+    // A lookup table for characters that can not be referenced by Object
+    p.glyphLook = function(font, chr) {
+      try {
+        switch (chr) {
+        case "1":
+          return font.one;
+        case "2":
+          return font.two;
+        case "3":
+          return font.three;
+        case "4":
+          return font.four;
+        case "5":
+          return font.five;
+        case "6":
+          return font.six;
+        case "7":
+          return font.seven;
+        case "8":
+          return font.eight;
+        case "9":
+          return font.nine;
+        case "0":
+          return font.zero;
+        case " ":
+          return font.space;
+        case "$":
+          return font.dollar;
+        case "!":
+          return font.exclam;
+        case '"':
+          return font.quotedbl;
+        case "#":
+          return font.numbersign;
+        case "%":
+          return font.percent;
+        case "&":
+          return font.ampersand;
+        case "'":
+          return font.quotesingle;
+        case "(":
+          return font.parenleft;
+        case ")":
+          return font.parenright;
+        case "*":
+          return font.asterisk;
+        case "+":
+          return font.plus;
+        case ",":
+          return font.comma;
+        case "-":
+          return font.hyphen;
+        case ".":
+          return font.period;
+        case "/":
+          return font.slash;
+        case "_":
+          return font.underscore;
+        case ":":
+          return font.colon;
+        case ";":
+          return font.semicolon;
+        case "<":
+          return font.less;
+        case "=":
+          return font.equal;
+        case ">":
+          return font.greater;
+        case "?":
+          return font.question;
+        case "@":
+          return font.at;
+        case "[":
+          return font.bracketleft;
+        case "\\":
+          return font.backslash;
+        case "]":
+          return font.bracketright;
+        case "^":
+          return font.asciicircum;
+        case "`":
+          return font.grave;
+        case "{":
+          return font.braceleft;
+        case "|":
+          return font.bar;
+        case "}":
+          return font.braceright;
+        case "~":
+          return font.asciitilde;
+          // If the character is not 'special', access it by object reference
+        default:
+          return font[chr];
+        }
+      } catch(e) {
+        Processing.debug(e);
+      }
+    };
+
+    // Print some text to the Canvas
+    Drawing2D.prototype.text$line = function(str, x, y, z, align) {
+      var textWidth = 0, xOffset = 0;
+      // If the font is a standard Canvas font...
+      if (!curTextFont.glyph) {
+        if (str && ("fillText" in curContext)) {
+          if (isFillDirty) {
+            curContext.fillStyle = p.color.toString(currentFillColor);
+            isFillDirty = false;
+          }
+
+          // horizontal offset/alignment
+          if(align === PConstants.RIGHT || align === PConstants.CENTER) {
+            textWidth = curTextFont.measureTextWidth(str);
+
+            if(align === PConstants.RIGHT) {
+              xOffset = -textWidth;
+            } else { // if(align === PConstants.CENTER)
+              xOffset = -textWidth/2;
+            }
+          }
+
+          curContext.fillText(str, x+xOffset, y);
+        }
+      } else {
+        // If the font is a Batik SVG font...
+        var font = p.glyphTable[curFontName];
+        saveContext();
+        curContext.translate(x, y + curTextSize);
+
+        // horizontal offset/alignment
+        if(align === PConstants.RIGHT || align === PConstants.CENTER) {
+          textWidth = font.width(str);
+
+          if(align === PConstants.RIGHT) {
+            xOffset = -textWidth;
+          } else { // if(align === PConstants.CENTER)
+            xOffset = -textWidth/2;
+          }
+        }
+
+        var upem   = font.units_per_em,
+          newScale = 1 / upem * curTextSize;
+
+        curContext.scale(newScale, newScale);
+
+        for (var i=0, len=str.length; i < len; i++) {
+          // Test character against glyph table
+          try {
+            p.glyphLook(font, str[i]).draw();
+          } catch(e) {
+            Processing.debug(e);
+          }
+        }
+        restoreContext();
+      }
+    };
+
+    Drawing3D.prototype.text$line = function(str, x, y, z, align) {
+      // handle case for 3d text
+      if (textcanvas === undef) {
+        textcanvas = document.createElement("canvas");
+      }
+      var oldContext = curContext;
+      curContext = textcanvas.getContext("2d");
+      curContext.font = curTextFont.css;
+      var textWidth = curTextFont.measureTextWidth(str);
+      textcanvas.width = textWidth;
+      textcanvas.height = curTextSize;
+      curContext = textcanvas.getContext("2d"); // refreshes curContext
+      curContext.font = curTextFont.css;
+      curContext.textBaseline="top";
+
+      // paint on 2D canvas
+      Drawing2D.prototype.text$line(str,0,0,0,PConstants.LEFT);
+
+      // use it as a texture
+      var aspect = textcanvas.width/textcanvas.height;
+      curContext = oldContext;
+
+      curContext.bindTexture(curContext.TEXTURE_2D, textTex);
+      curContext.texImage2D(curContext.TEXTURE_2D, 0, curContext.RGBA, curContext.RGBA, curContext.UNSIGNED_BYTE, textcanvas);
+      curContext.texParameteri(curContext.TEXTURE_2D, curContext.TEXTURE_MAG_FILTER, curContext.LINEAR);
+      curContext.texParameteri(curContext.TEXTURE_2D, curContext.TEXTURE_MIN_FILTER, curContext.LINEAR);
+      curContext.texParameteri(curContext.TEXTURE_2D, curContext.TEXTURE_WRAP_T, curContext.CLAMP_TO_EDGE);
+      curContext.texParameteri(curContext.TEXTURE_2D, curContext.TEXTURE_WRAP_S, curContext.CLAMP_TO_EDGE);
+      // If we don't have a power of two texture, we can't mipmap it.
+      // curContext.generateMipmap(curContext.TEXTURE_2D);
+
+      // horizontal offset/alignment
+      var xOffset = 0;
+      if (align === PConstants.RIGHT) {
+        xOffset = -textWidth;
+      } else if(align === PConstants.CENTER) {
+        xOffset = -textWidth/2;
+      }
+      var model = new PMatrix3D();
+      var scalefactor = curTextSize * 0.5;
+      model.translate(x+xOffset-scalefactor/2, y-scalefactor, z);
+      model.scale(-aspect*scalefactor, -scalefactor, scalefactor);
+      model.translate(-1, -1, -1);
+      model.transpose();
+
+      var view = new PMatrix3D();
+      view.scale(1, -1, 1);
+      view.apply(modelView.array());
+      view.transpose();
+
+      curContext.useProgram(programObject2D);
+      vertexAttribPointer("aVertex2d", programObject2D, "aVertex", 3, textBuffer);
+      vertexAttribPointer("aTextureCoord2d", programObject2D, "aTextureCoord", 2, textureBuffer);
+      uniformi("uSampler2d", programObject2D, "uSampler", [0]);
+
+      uniformi("uIsDrawingText2d", programObject2D, "uIsDrawingText", true);
+
+      uniformMatrix("uModel2d", programObject2D, "uModel", false,  model.array());
+      uniformMatrix("uView2d", programObject2D, "uView", false, view.array());
+      uniformf("uColor2d", programObject2D, "uColor", fillStyle);
+      curContext.bindBuffer(curContext.ELEMENT_ARRAY_BUFFER, indexBuffer);
+      curContext.drawElements(curContext.TRIANGLES, 6, curContext.UNSIGNED_SHORT, 0);
+    };
+
+
+    /**
+    * unbounded text function (z is an optional argument)
+    */
+    function text$4(str, x, y, z) {
+      var lines, linesCount;
+      if(str.indexOf('\n') < 0) {
+        lines = [str];
+        linesCount = 1;
+      } else {
+        lines = str.split(/\r?\n/g);
+        linesCount = lines.length;
+      }
+      // handle text line-by-line
+
+      var yOffset = 0;
+      if(verticalTextAlignment === PConstants.TOP) {
+        yOffset = curTextAscent + curTextDescent;
+      } else if(verticalTextAlignment === PConstants.CENTER) {
+        yOffset = curTextAscent/2 - (linesCount-1)*curTextLeading/2;
+      } else if(verticalTextAlignment === PConstants.BOTTOM) {
+        yOffset = -(curTextDescent + (linesCount-1)*curTextLeading);
+      }
+
+      for(var i=0;i<linesCount;++i) {
+        var line = lines[i];
+        drawing.text$line(line, x, y + yOffset, z, horizontalTextAlignment);
+        yOffset += curTextLeading;
+      }
+    }
+
+
+    /**
+    * box-bounded text function (z is an optional argument)
+    */
+    function text$6(str, x, y, width, height, z) {
+      // 'fail' on 0-valued dimensions
+      if (str.length === 0 || width === 0 || height === 0) {
+        return;
+      }
+      // also 'fail' if the text height is larger than the bounding height
+      if(curTextSize > height) {
+        return;
+      }
+
+      var spaceMark = -1;
+      var start = 0;
+      var lineWidth = 0;
+      var drawCommands = [];
+
+      // run through text, character-by-character
+      for (var charPos=0, len=str.length; charPos < len; charPos++)
+      {
+        var currentChar = str[charPos];
+        var spaceChar = (currentChar === " ");
+        var letterWidth = curTextFont.measureTextWidth(currentChar);
+
+        // if we aren't looking at a newline, and the text still fits, keep processing
+        if (currentChar !== "\n" && (lineWidth + letterWidth <= width)) {
+          if (spaceChar) { spaceMark = charPos; }
+          lineWidth += letterWidth;
+        }
+
+        // if we're looking at a newline, or the text no longer fits, push the section that fit into the drawcommand list
+        else
+        {
+          if (spaceMark + 1 === start) {
+            if(charPos>0) {
+              // Whole line without spaces so far.
+              spaceMark = charPos;
+            } else {
+              // 'fail', because the line can't even fit the first character
+              return;
+            }
+          }
+
+          if (currentChar === "\n") {
+            drawCommands.push({text:str.substring(start, charPos), width: lineWidth});
+            start = charPos + 1;
+          } else {
+            // current is not a newline, which means the line doesn't fit in box. push text.
+            // In Processing 1.5.1, the space is also pushed, so we push up to spaceMark+1,
+            // rather than up to spaceMark, as was the case for Processing 1.5 and earlier.
+            drawCommands.push({text:str.substring(start, spaceMark+1), width: lineWidth});
+            start = spaceMark + 1;
+          }
+
+          // newline + return
+          lineWidth = 0;
+          charPos = start - 1;
+        }
+      }
+
+      // push the remaining text
+      if (start < len) {
+        drawCommands.push({text:str.substring(start), width: lineWidth});
+      }
+
+      // resolve horizontal alignment
+      var xOffset = 1,
+          yOffset = curTextAscent;
+      if (horizontalTextAlignment === PConstants.CENTER) {
+        xOffset = width/2;
+      } else if (horizontalTextAlignment === PConstants.RIGHT) {
+        xOffset = width;
+      }
+
+      // resolve vertical alignment
+      var linesCount = drawCommands.length,
+          visibleLines = Math.min(linesCount, Math.floor(height/curTextLeading));
+      if(verticalTextAlignment === PConstants.TOP) {
+        yOffset = curTextAscent + curTextDescent;
+      } else if(verticalTextAlignment === PConstants.CENTER) {
+        yOffset = (height/2) - curTextLeading * (visibleLines/2 - 1);
+      } else if(verticalTextAlignment === PConstants.BOTTOM) {
+        yOffset = curTextDescent + curTextLeading;
+      }
+
+      var command,
+          drawCommand,
+          leading;
+      for (command = 0; command < linesCount; command++) {
+        leading = command * curTextLeading;
+        // stop if not enough space for one more line draw
+        if (yOffset + leading > height - curTextDescent) {
+          break;
+        }
+        drawCommand = drawCommands[command];
+        drawing.text$line(drawCommand.text, x + xOffset, y + yOffset + leading, z, horizontalTextAlignment);
+      }
+    }
+
+    /**
+     * text() Draws text to the screen.
+     *
+     * @param {String|char|int|float} data       the alphanumeric symbols to be displayed
+     * @param {int|float}             x          x-coordinate of text
+     * @param {int|float}             y          y-coordinate of text
+     * @param {int|float}             z          optional z-coordinate of text
+     * @param {String}                stringdata optional letters to be displayed
+     * @param {int|float}             width      optional width of text box
+     * @param {int|float}             height     optional height of text box
+     *
+     * @see #textAlign
+     * @see #textMode
+     * @see #loadFont
+     * @see #PFont
+     * @see #textFont
+     */
+    p.text = function() {
+      if (textMode === PConstants.SHAPE) {
+        // TODO: requires beginRaw function
+        return;
+      }
+      if (arguments.length === 3) { // for text( str, x, y)
+        text$4(toP5String(arguments[0]), arguments[1], arguments[2], 0);
+      } else if (arguments.length === 4) { // for text( str, x, y, z)
+        text$4(toP5String(arguments[0]), arguments[1], arguments[2], arguments[3]);
+      } else if (arguments.length === 5) { // for text( str, x, y , width, height)
+        text$6(toP5String(arguments[0]), arguments[1], arguments[2], arguments[3], arguments[4], 0);
+      } else if (arguments.length === 6) { // for text( stringdata, x, y , width, height, z)
+        text$6(toP5String(arguments[0]), arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]);
+      }
+    };
+
+    /**
+     * Sets the way text draws to the screen. In the default configuration (the MODEL mode), it's possible to rotate,
+     * scale, and place letters in two and three dimensional space. <br /><br /> Changing to SCREEN mode draws letters
+     * directly to the front of the window and greatly increases rendering quality and speed when used with the P2D and
+     * P3D renderers. textMode(SCREEN) with OPENGL and JAVA2D (the default) renderers will generally be slower, though
+     * pixel accurate with P2D and P3D. With textMode(SCREEN), the letters draw at the actual size of the font (in pixels)
+     * and therefore calls to <b>textSize()</b> will not affect the size of the letters. To create a font at the size you
+     * desire, use the "Create font..." option in the Tools menu, or use the createFont() function. When using textMode(SCREEN),
+     * any z-coordinate passed to a text() command will be ignored, because your computer screen is...flat!
+     *
+     * @param {int} MODE Either MODEL, SCREEN or SHAPE (not yet supported)
+     *
+     * @see loadFont
+     * @see PFont
+     * @see text
+     * @see textFont
+     * @see createFont
+     */
+    p.textMode = function(mode){
+      textMode = mode;
+    };
+
+    // Load Batik SVG Fonts and parse to pre-def objects for quick rendering
+    p.loadGlyphs = function(url) {
+      var x, y, cx, cy, nx, ny, d, a, lastCom, lenC, horiz_adv_x, getXY = '[0-9\\-]+', path;
+
+      // Return arrays of SVG commands and coords
+      // get this to use p.matchAll() - will need to work around the lack of null return
+      var regex = function(needle, hay) {
+        var i = 0,
+          results = [],
+          latest, regexp = new RegExp(needle, "g");
+        latest = results[i] = regexp.exec(hay);
+        while (latest) {
+          i++;
+          latest = results[i] = regexp.exec(hay);
+        }
+        return results;
+      };
+
+      var buildPath = function(d) {
+        var c = regex("[A-Za-z][0-9\\- ]+|Z", d);
+        var beforePathDraw = function() {
+          saveContext();
+          return drawing.$ensureContext();
+        };
+        var afterPathDraw = function() {
+          executeContextFill();
+          executeContextStroke();
+          restoreContext();
+        };
+
+        // Begin storing path object
+        path = "return {draw:function(){var curContext=beforePathDraw();curContext.beginPath();";
+
+        x = 0;
+        y = 0;
+        cx = 0;
+        cy = 0;
+        nx = 0;
+        ny = 0;
+        d = 0;
+        a = 0;
+        lastCom = "";
+        lenC = c.length - 1;
+
+        // Loop through SVG commands translating to canvas eqivs functions in path object
+        for (var j = 0; j < lenC; j++) {
+          var com = c[j][0], xy = regex(getXY, com);
+
+          switch (com[0]) {
+            case "M":
+              //curContext.moveTo(x,-y);
+              x = parseFloat(xy[0][0]);
+              y = parseFloat(xy[1][0]);
+              path += "curContext.moveTo(" + x + "," + (-y) + ");";
+              break;
+
+            case "L":
+              //curContext.lineTo(x,-y);
+              x = parseFloat(xy[0][0]);
+              y = parseFloat(xy[1][0]);
+              path += "curContext.lineTo(" + x + "," + (-y) + ");";
+              break;
+
+            case "H":
+              //curContext.lineTo(x,-y)
+              x = parseFloat(xy[0][0]);
+              path += "curContext.lineTo(" + x + "," + (-y) + ");";
+              break;
+
+            case "V":
+              //curContext.lineTo(x,-y);
+              y = parseFloat(xy[0][0]);
+              path += "curContext.lineTo(" + x + "," + (-y) + ");";
+              break;
+
+            case "T":
+              //curContext.quadraticCurveTo(cx,-cy,nx,-ny);
+              nx = parseFloat(xy[0][0]);
+              ny = parseFloat(xy[1][0]);
+
+              if (lastCom === "Q" || lastCom === "T") {
+                d = Math.sqrt(Math.pow(x - cx, 2) + Math.pow(cy - y, 2));
+                a = Math.PI + Math.atan2(cx - x, cy - y);
+                cx = x + (Math.sin(a) * (d));
+                cy = y + (Math.cos(a) * (d));
+              } else {
+                cx = x;
+                cy = y;
+              }
+
+              path += "curContext.quadraticCurveTo(" + cx + "," + (-cy) + "," + nx + "," + (-ny) + ");";
+              x = nx;
+              y = ny;
+              break;
+
+            case "Q":
+              //curContext.quadraticCurveTo(cx,-cy,nx,-ny);
+              cx = parseFloat(xy[0][0]);
+              cy = parseFloat(xy[1][0]);
+              nx = parseFloat(xy[2][0]);
+              ny = parseFloat(xy[3][0]);
+              path += "curContext.quadraticCurveTo(" + cx + "," + (-cy) + "," + nx + "," + (-ny) + ");";
+              x = nx;
+              y = ny;
+              break;
+
+            case "Z":
+              //curContext.closePath();
+              path += "curContext.closePath();";
+              break;
+          }
+          lastCom = com[0];
+        }
+
+        path += "afterPathDraw();";
+        path += "curContext.translate(" + horiz_adv_x + ",0);";
+        path += "}}";
+
+        return ((new Function("beforePathDraw", "afterPathDraw", path))(beforePathDraw, afterPathDraw));
+      };
+
+      // Parse SVG font-file into block of Canvas commands
+      var parseSVGFont = function(svg) {
+        // Store font attributes
+        var font = svg.getElementsByTagName("font");
+        p.glyphTable[url].horiz_adv_x = font[0].getAttribute("horiz-adv-x");
+
+        var font_face = svg.getElementsByTagName("font-face")[0];
+        p.glyphTable[url].units_per_em = parseFloat(font_face.getAttribute("units-per-em"));
+        p.glyphTable[url].ascent = parseFloat(font_face.getAttribute("ascent"));
+        p.glyphTable[url].descent = parseFloat(font_face.getAttribute("descent"));
+
+        var glyph = svg.getElementsByTagName("glyph"),
+          len = glyph.length;
+
+        // Loop through each glyph in the SVG
+        for (var i = 0; i < len; i++) {
+          // Store attributes for this glyph
+          var unicode = glyph[i].getAttribute("unicode");
+          var name = glyph[i].getAttribute("glyph-name");
+          horiz_adv_x = glyph[i].getAttribute("horiz-adv-x");
+          if (horiz_adv_x === null) {
+            horiz_adv_x = p.glyphTable[url].horiz_adv_x;
+          }
+          d = glyph[i].getAttribute("d");
+          // Split path commands in glpyh
+          if (d !== undef) {
+            path = buildPath(d);
+            // Store glyph data to table object
+            p.glyphTable[url][name] = {
+              name: name,
+              unicode: unicode,
+              horiz_adv_x: horiz_adv_x,
+              draw: path.draw
+            };
+          }
+        } // finished adding glyphs to table
+      };
+
+      // Load and parse Batik SVG font as XML into a Processing Glyph object
+      var loadXML = function() {
+        var xmlDoc;
+
+        try {
+          xmlDoc = document.implementation.createDocument("", "", null);
+        }
+        catch(e_fx_op) {
+          Processing.debug(e_fx_op.message);
+          return;
+        }
+
+        try {
+          xmlDoc.async = false;
+          xmlDoc.load(url);
+          parseSVGFont(xmlDoc.getElementsByTagName("svg")[0]);
+        }
+        catch(e_sf_ch) {
+          // Google Chrome, Safari etc.
+          Processing.debug(e_sf_ch);
+          try {
+            var xmlhttp = new window.XMLHttpRequest();
+            xmlhttp.open("GET", url, false);
+            xmlhttp.send(null);
+            parseSVGFont(xmlhttp.responseXML.documentElement);
+          }
+          catch(e) {
+            Processing.debug(e_sf_ch);
+          }
+        }
+      };
+
+      // Create a new object in glyphTable to store this font
+      p.glyphTable[url] = {};
+
+      // Begin loading the Batik SVG font...
+      loadXML(url);
+
+      // Return the loaded font for attribute grabbing
+      return p.glyphTable[url];
+    };
+
+    /**
+     * Gets the sketch parameter value. The parameter can be defined as the canvas attribute with
+     * the "data-processing-" prefix or provided in the pjs directive (e.g. param-test="52").
+     * The function tries the canvas attributes, then the pjs directive content.
+     *
+     * @param   {String}    name          The name of the param to read.
+     *
+     * @returns {String}    The parameter value, or null if parameter is not defined.
+     */
+    p.param = function(name) {
+      // trying attribute that was specified in CANVAS
+      var attributeName = "data-processing-" + name;
+      if (curElement.hasAttribute(attributeName)) {
+        return curElement.getAttribute(attributeName);
+      }
+      // trying child PARAM elements of the CANVAS
+      for (var i = 0, len = curElement.childNodes.length; i < len; ++i) {
+        var item = curElement.childNodes.item(i);
+        if (item.nodeType !== 1 || item.tagName.toLowerCase() !== "param") {
+          continue;
+        }
+        if (item.getAttribute("name") === name) {
+          return item.getAttribute("value");
+        }
+      }
+      // fallback to default params
+      if (curSketch.params.hasOwnProperty(name)) {
+        return curSketch.params[name];
+      }
+      return null;
+    };
+
+    ////////////////////////////////////////////////////////////////////////////
+    // 2D/3D methods wiring utils
+    ////////////////////////////////////////////////////////////////////////////
+    function wireDimensionalFunctions(mode) {
+      // Drawing2D/Drawing3D
+      if (mode === '3D') {
+        drawing = new Drawing3D();
+      } else if (mode === '2D') {
+        drawing = new Drawing2D();
+      } else {
+        drawing = new DrawingPre();
+      }
+
+      // Wire up functions (Use DrawingPre properties names)
+      for (var i in DrawingPre.prototype) {
+        if (DrawingPre.prototype.hasOwnProperty(i) && i.indexOf("$") < 0) {
+          p[i] = drawing[i];
+        }
+      }
+
+      // Run initialization
+      drawing.$init();
+    }
+
+    function createDrawingPreFunction(name) {
+      return function() {
+        wireDimensionalFunctions("2D");
+        return drawing[name].apply(this, arguments);
+      };
+    }
+    DrawingPre.prototype.translate = createDrawingPreFunction("translate");
+    DrawingPre.prototype.transform = createDrawingPreFunction("transform");
+    DrawingPre.prototype.scale = createDrawingPreFunction("scale");
+    DrawingPre.prototype.pushMatrix = createDrawingPreFunction("pushMatrix");
+    DrawingPre.prototype.popMatrix = createDrawingPreFunction("popMatrix");
+    DrawingPre.prototype.resetMatrix = createDrawingPreFunction("resetMatrix");
+    DrawingPre.prototype.applyMatrix = createDrawingPreFunction("applyMatrix");
+    DrawingPre.prototype.rotate = createDrawingPreFunction("rotate");
+    DrawingPre.prototype.rotateZ = createDrawingPreFunction("rotateZ");
+    DrawingPre.prototype.shearX = createDrawingPreFunction("shearX");
+    DrawingPre.prototype.shearY = createDrawingPreFunction("shearY");
+    DrawingPre.prototype.redraw = createDrawingPreFunction("redraw");
+    DrawingPre.prototype.toImageData = createDrawingPreFunction("toImageData");
+    DrawingPre.prototype.ambientLight = createDrawingPreFunction("ambientLight");
+    DrawingPre.prototype.directionalLight = createDrawingPreFunction("directionalLight");
+    DrawingPre.prototype.lightFalloff = createDrawingPreFunction("lightFalloff");
+    DrawingPre.prototype.lightSpecular = createDrawingPreFunction("lightSpecular");
+    DrawingPre.prototype.pointLight = createDrawingPreFunction("pointLight");
+    DrawingPre.prototype.noLights = createDrawingPreFunction("noLights");
+    DrawingPre.prototype.spotLight = createDrawingPreFunction("spotLight");
+    DrawingPre.prototype.beginCamera = createDrawingPreFunction("beginCamera");
+    DrawingPre.prototype.endCamera = createDrawingPreFunction("endCamera");
+    DrawingPre.prototype.frustum = createDrawingPreFunction("frustum");
+    DrawingPre.prototype.box = createDrawingPreFunction("box");
+    DrawingPre.prototype.sphere = createDrawingPreFunction("sphere");
+    DrawingPre.prototype.ambient = createDrawingPreFunction("ambient");
+    DrawingPre.prototype.emissive = createDrawingPreFunction("emissive");
+    DrawingPre.prototype.shininess = createDrawingPreFunction("shininess");
+    DrawingPre.prototype.specular = createDrawingPreFunction("specular");
+    DrawingPre.prototype.fill = createDrawingPreFunction("fill");
+    DrawingPre.prototype.stroke = createDrawingPreFunction("stroke");
+    DrawingPre.prototype.strokeWeight = createDrawingPreFunction("strokeWeight");
+    DrawingPre.prototype.smooth = createDrawingPreFunction("smooth");
+    DrawingPre.prototype.noSmooth = createDrawingPreFunction("noSmooth");
+    DrawingPre.prototype.point = createDrawingPreFunction("point");
+    DrawingPre.prototype.vertex = createDrawingPreFunction("vertex");
+    DrawingPre.prototype.endShape = createDrawingPreFunction("endShape");
+    DrawingPre.prototype.bezierVertex = createDrawingPreFunction("bezierVertex");
+    DrawingPre.prototype.curveVertex = createDrawingPreFunction("curveVertex");
+    DrawingPre.prototype.curve = createDrawingPreFunction("curve");
+    DrawingPre.prototype.line = createDrawingPreFunction("line");
+    DrawingPre.prototype.bezier = createDrawingPreFunction("bezier");
+    DrawingPre.prototype.rect = createDrawingPreFunction("rect");
+    DrawingPre.prototype.ellipse = createDrawingPreFunction("ellipse");
+    DrawingPre.prototype.background = createDrawingPreFunction("background");
+    DrawingPre.prototype.image = createDrawingPreFunction("image");
+    DrawingPre.prototype.textWidth = createDrawingPreFunction("textWidth");
+    DrawingPre.prototype.text$line = createDrawingPreFunction("text$line");
+    DrawingPre.prototype.$ensureContext = createDrawingPreFunction("$ensureContext");
+    DrawingPre.prototype.$newPMatrix = createDrawingPreFunction("$newPMatrix");
+
+    DrawingPre.prototype.size = function(aWidth, aHeight, aMode) {
+      wireDimensionalFunctions(aMode === PConstants.WEBGL ? "3D" : "2D");
+      p.size(aWidth, aHeight, aMode);
+    };
+
+    DrawingPre.prototype.$init = noop;
+
+    Drawing2D.prototype.$init = function() {
+      // Setup default 2d canvas context.
+      // Moving this here removes the number of times we need to check the 3D variable
+      p.size(p.width, p.height);
+
+      curContext.lineCap = 'round';
+
+      // Set default stroke and fill color
+      p.noSmooth();
+      p.disableContextMenu();
+    };
+    Drawing3D.prototype.$init = function() {
+      // For ref/perf test compatibility until those are fixed
+      p.use3DContext = true;
+      p.disableContextMenu();
+    };
+
+    DrawingShared.prototype.$ensureContext = function() {
+      return curContext;
+    };
+
+    //////////////////////////////////////////////////////////////////////////
+    // Keyboard Events
+    //////////////////////////////////////////////////////////////////////////
+
+    // In order to catch key events in a canvas, it needs to be "specially focusable",
+    // by assigning it a tabindex. If no tabindex is specified on-page, set this to 0.
+    if (!curElement.getAttribute("tabindex")) {
+      curElement.setAttribute("tabindex", 0);
+    }
+
+    function getKeyCode(e) {
+      var code = e.which || e.keyCode;
+      switch (code) {
+        case 13: // ENTER
+          return 10;
+        case 91: // META L (Saf/Mac)
+        case 93: // META R (Saf/Mac)
+        case 224: // META (FF/Mac)
+          return 157;
+        case 57392: // CONTROL (Op/Mac)
+          return 17;
+        case 46: // DELETE
+          return 127;
+        case 45: // INSERT
+          return 155;
+      }
+      return code;
+    }
+
+    function getKeyChar(e) {
+      var c = e.which || e.keyCode;
+      var anyShiftPressed = e.shiftKey || e.ctrlKey || e.altKey || e.metaKey;
+      switch (c) {
+        case 13:
+          c = anyShiftPressed ? 13 : 10; // RETURN vs ENTER (Mac)
+          break;
+        case 8:
+          c = anyShiftPressed ? 127 : 8; // DELETE vs BACKSPACE (Mac)
+          break;
+      }
+      return new Char(c);
+    }
+
+    function suppressKeyEvent(e) {
+      if (typeof e.preventDefault === "function") {
+        e.preventDefault();
+      } else if (typeof e.stopPropagation === "function") {
+        e.stopPropagation();
+      }
+      return false;
+    }
+
+    function updateKeyPressed() {
+      var ch;
+      for (ch in pressedKeysMap) {
+        if (pressedKeysMap.hasOwnProperty(ch)) {
+          p.__keyPressed = true;
+          return;
+        }
+      }
+      p.__keyPressed = false;
+    }
+
+    function resetKeyPressed() {
+      p.__keyPressed = false;
+      pressedKeysMap = [];
+      lastPressedKeyCode = null;
+    }
+
+    function simulateKeyTyped(code, c) {
+      pressedKeysMap[code] = c;
+      lastPressedKeyCode = null;
+      p.key = c;
+      p.keyCode = code;
+      p.keyPressed();
+      p.keyCode = 0;
+      p.keyTyped();
+      updateKeyPressed();
+    }
+
+    function handleKeydown(e) {
+      var code = getKeyCode(e);
+      if (code === PConstants.DELETE) {
+        simulateKeyTyped(code, new Char(127));
+        return;
+      }
+      if (codedKeys.indexOf(code) < 0) {
+        lastPressedKeyCode = code;
+        return;
+      }
+      var c = new Char(PConstants.CODED);
+      p.key = c;
+      p.keyCode = code;
+      pressedKeysMap[code] = c;
+      p.keyPressed();
+      lastPressedKeyCode = null;
+      updateKeyPressed();
+      return suppressKeyEvent(e);
+    }
+
+    function handleKeypress(e) {
+      if (lastPressedKeyCode === null) {
+        return; // processed in handleKeydown
+      }
+      var code = lastPressedKeyCode, c = getKeyChar(e);
+      simulateKeyTyped(code, c);
+      return suppressKeyEvent(e);
+    }
+
+    function handleKeyup(e) {
+      var code = getKeyCode(e), c = pressedKeysMap[code];
+      if (c === undef) {
+        return; // no keyPressed event was generated.
+      }
+      p.key = c;
+      p.keyCode = code;
+      p.keyReleased();
+      delete pressedKeysMap[code];
+      updateKeyPressed();
+    }
+
+    // Send aCode Processing syntax to be converted to JavaScript
+    if (!pgraphicsMode) {
+      if (aCode instanceof Processing.Sketch) {
+        // Use sketch as is
+        curSketch = aCode;
+      } else if (typeof aCode === "function") {
+        // Wrap function with default sketch parameters
+        curSketch = new Processing.Sketch(aCode);
+      } else if (!aCode) {
+        // Empty sketch
+        curSketch = new Processing.Sketch(function (){});
+      } else {
+  //#if PARSER
+        // Compile the code
+        curSketch = Processing.compile(aCode);
+  //#else
+  //      throw "PJS compile is not supported";
+  //#endif
+      }
+
+      // Expose internal field for diagnostics and testing
+      p.externals.sketch = curSketch;
+
+      wireDimensionalFunctions();
+
+      // the onfocus and onblur events are handled in two parts.
+      // 1) the p.focused property is handled per sketch
+      curElement.onfocus = function() {
+        p.focused = true;
+      };
+
+      curElement.onblur = function() {
+        p.focused = false;
+        if (!curSketch.options.globalKeyEvents) {
+          resetKeyPressed();
+        }
+      };
+
+      // 2) looping status is handled per page, based on the pauseOnBlur @pjs directive
+      if (curSketch.options.pauseOnBlur) {
+        attachEventHandler(window, 'focus', function() {
+          if (doLoop) {
+            p.loop();
+          }
+        });
+
+        attachEventHandler(window, 'blur', function() {
+          if (doLoop && loopStarted) {
+            p.noLoop();
+            doLoop = true; // make sure to keep this true after the noLoop call
+          }
+          resetKeyPressed();
+        });
+      }
+
+      // if keyboard events should be handled globally, the listeners should
+      // be bound to the document window, rather than to the current canvas
+      var keyTrigger = curSketch.options.globalKeyEvents ? window : curElement;
+      attachEventHandler(keyTrigger, "keydown", handleKeydown);
+      attachEventHandler(keyTrigger, "keypress", handleKeypress);
+      attachEventHandler(keyTrigger, "keyup", handleKeyup);
+
+      // Step through the libraries that were attached at doc load...
+      for (var i in Processing.lib) {
+        if (Processing.lib.hasOwnProperty(i)) {
+          if(Processing.lib[i].hasOwnProperty("attach")) {
+            // use attach function if present
+            Processing.lib[i].attach(p);
+          } else if(Processing.lib[i] instanceof Function)  {
+            // Init the libraries in the context of this p_instance (legacy)
+            Processing.lib[i].call(this);
+          }
+        }
+      }
+
+      // sketch execute test interval, used to reschedule
+      // an execute when preloads have not yet finished.
+      var retryInterval = 100;
+
+      var executeSketch = function(processing) {
+        // Don't start until all specified images and fonts in the cache are preloaded
+        if (!(curSketch.imageCache.pending || PFont.preloading.pending(retryInterval))) {
+          // the opera preload cache can only be cleared once we start
+          if (window.opera) {
+            var link,
+                element,
+                operaCache=curSketch.imageCache.operaCache;
+            for (link in operaCache) {
+              if(operaCache.hasOwnProperty(link)) {
+                element = operaCache[link];
+                if (element !== null) {
+                  document.body.removeChild(element);
+                }
+                delete(operaCache[link]);
+              }
+            }
+          }
+
+          curSketch.attach(processing, defaultScope);
+
+          // pass a reference to the p instance for this sketch.
+          curSketch.onLoad(processing);
+
+          // Run void setup()
+          if (processing.setup) {
+            processing.setup();
+            // if any transforms were performed in setup reset to identity matrix
+            // so draw loop is unpolluted
+            processing.resetMatrix();
+            curSketch.onSetup();
+          }
+
+          // some pixels can be cached, flushing
+          resetContext();
+
+          if (processing.draw) {
+            if (!doLoop) {
+              processing.redraw();
+            } else {
+              processing.loop();
+            }
+          }
+        } else {
+          window.setTimeout(function() { executeSketch(processing); }, retryInterval);
+        }
+      };
+
+      // Only store an instance of non-createGraphics instances.
+      addInstance(this);
+
+      // The parser adds custom methods to the processing context
+      // this renames p to processing so these methods will run
+      executeSketch(p);
+    } else {
+      // No executable sketch was specified
+      // or called via createGraphics
+      curSketch = new Processing.Sketch();
+
+      wireDimensionalFunctions();
+
+      // Hack to make PGraphics work again after splitting size()
+      p.size = function(w, h, render) {
+        if (render && render === PConstants.WEBGL) {
+          wireDimensionalFunctions('3D');
+        } else {
+          wireDimensionalFunctions('2D');
+        }
+
+        p.size(w, h, render);
+      };
+    }
+  };
+
+  // Place-holder for overridable debugging function
+  Processing.debug = (function() {
+    if ("console" in window) {
+      return function(msg) {
+        window.console.log('Processing.js: ' + msg);
+      };
+    }
+    return noop;
+  }());
+
+  // bind prototype
+  Processing.prototype = defaultScope;
+
+  /**
+   * instance store and lookup
+   */
+  Processing.instances = processingInstances;
+  Processing.getInstanceById = function(name) {
+    return processingInstances[processingInstanceIds[name]];
+  };
+
+  // Unsupported Processing File and I/O operations.
+  (function(Processing) {
+    var unsupportedP5 = ("open() createOutput() createInput() BufferedReader selectFolder() " +
+                         "dataPath() createWriter() selectOutput() beginRecord() " +
+                         "saveStream() endRecord() selectInput() saveBytes() createReader() " +
+                         "beginRaw() endRaw() PrintWriter delay()").split(" "),
+        count = unsupportedP5.length,
+        prettyName,
+        p5Name;
+
+    function createUnsupportedFunc(n) {
+      return function() {
+        throw "Processing.js does not support " + n + ".";
+      };
+    }
+
+    while (count--) {
+      prettyName = unsupportedP5[count];
+      p5Name = prettyName.replace("()", "");
+      Processing[p5Name] = createUnsupportedFunc(prettyName);
+    }
+  }(defaultScope));
+
+  // we're done. Return our object.
+  return Processing;
+};
+
+},{}],27:[function(require,module,exports){
+// Base source files
+var source = {
+  virtEquals: require("./Helpers/virtEquals"),
+  virtHashCode: require("./Helpers/virtHashCode"),
+  ObjectIterator: require("./Helpers/ObjectIterator"),
+  PConstants: require("./Helpers/PConstants"),
+  ArrayList: require("./Objects/ArrayList"),
+  HashMap: require("./Objects/HashMap"),
+  PVector: require("./Objects/PVector"),
+  PFont: require("./Objects/PFont"),
+  Char: require("./Objects/Char"),
+  XMLAttribute: require("./Objects/XMLAttribute"),
+  XMLElement: require("./Objects/XMLElement"),
+  PMatrix2D: require("./Objects/PMatrix2D"),
+  PMatrix3D: require("./Objects/PMatrix3D"),
+  PShape: require("./Objects/PShape"),
+  colors: require("./Objects/webcolors"),
+  PShapeSVG:  require("./Objects/PShapeSVG"),
+  CommonFunctions: require("./P5Functions/commonFunctions"),
+  defaultScope: require("./Helpers/defaultScope"),
+  Processing: require("./Processing"),
+  setupParser: require("./Parser/Parser"),
+  finalize: require("./Helpers/finalizeProcessing")
+};
+
+// Additional code that gets tacked onto "p" during
+// instantiation of a Processing sketch.
+source.extend = {
+  withMath: require("./P5Functions/Math.js"),
+  withProxyFunctions: require("./P5Functions/JavaProxyFunctions")(source.virtHashCode, source.virtEquals),
+  withTouch: require("./P5Functions/touchmouse"),
+  withCommonFunctions: source.CommonFunctions.withCommonFunctions
+};
+
+/**
+ * Processing.js building function
+ */
+module.exports = function buildProcessingJS(Browser, testHarness) {
+  var noop = function(){},
+      virtEquals = source.virtEquals,
+      virtHashCode = source.virtHashCode,
+      PConstants = source.PConstants,
+      CommonFunctions = source.CommonFunctions,
+      ObjectIterator = source.ObjectIterator,
+      Char = source.Char,
+      XMLAttribute = source.XMLAttribute(),
+
+      ArrayList = source.ArrayList({
+        virtHashCode: virtHashCode,
+        virtEquals: virtEquals
+      }),
+
+      HashMap = source.HashMap({
+        virtHashCode: virtHashCode,
+        virtEquals: virtEquals
+      }),
+
+      PVector = source.PVector({
+        PConstants: PConstants
+      }),
+
+      PFont = source.PFont({
+        Browser: Browser,
+        noop: noop
+      }),
+
+      XMLElement = source.XMLElement({
+        Browser: Browser,
+        XMLAttribute: XMLAttribute
+      }),
+
+      PMatrix2D = source.PMatrix2D({
+        p:CommonFunctions
+      }),
+
+      PMatrix3D = source.PMatrix3D({
+        p:CommonFunctions
+      }),
+
+      PShape = source.PShape({
+        PConstants: PConstants,
+        PMatrix2D: PMatrix2D,
+        PMatrix3D: PMatrix3D
+      }),
+
+      PShapeSVG = source.PShapeSVG({
+        CommonFunctions: CommonFunctions,
+        PConstants: PConstants,
+        PShape: PShape,
+        XMLElement: XMLElement,
+        colors: source.colors
+      }),
+
+      defaultScope = source.defaultScope({
+        ArrayList: ArrayList,
+        HashMap: HashMap,
+        PVector: PVector,
+        PFont: PFont,
+        PShapeSVG: PShapeSVG,
+        ObjectIterator: ObjectIterator,
+        PConstants: PConstants,
+        Char: Char,
+        XMLElement: XMLElement,
+        XML: XMLElement
+      }),
+
+      Processing = source.Processing({
+        defaultScope: defaultScope,
+        Browser: Browser,
+        extend: source.extend,
+        noop: noop
+      });
+
+  // set up the Processing syntax parser
+  Processing = source.setupParser(Processing, {
+    Browser: Browser,
+    aFunctions: testHarness,
+    defaultScope: defaultScope
+  });
+
+  // finalise the Processing object
+  Processing = source.finalize(Processing, {
+    version: require('../package.json').version,
+    isDomPresent: false || Browser.isDomPresent,
+    window: Browser.window,
+    document: Browser.document,
+    noop: noop
+  });
+
+  // done.
+  return Processing;
+};
+
+},{"../package.json":2,"./Helpers/ObjectIterator":3,"./Helpers/PConstants":4,"./Helpers/defaultScope":5,"./Helpers/finalizeProcessing":6,"./Helpers/virtEquals":7,"./Helpers/virtHashCode":8,"./Objects/ArrayList":9,"./Objects/Char":10,"./Objects/HashMap":11,"./Objects/PFont":12,"./Objects/PMatrix2D":13,"./Objects/PMatrix3D":14,"./Objects/PShape":15,"./Objects/PShapeSVG":16,"./Objects/PVector":17,"./Objects/XMLAttribute":18,"./Objects/XMLElement":19,"./Objects/webcolors":20,"./P5Functions/JavaProxyFunctions":21,"./P5Functions/Math.js":22,"./P5Functions/commonFunctions":23,"./P5Functions/touchmouse":24,"./Parser/Parser":25,"./Processing":26}]},{},[1])

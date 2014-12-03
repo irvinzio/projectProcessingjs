@@ -23,28 +23,24 @@
   <!-- CSS concatenated and minified via ant build script-->
   <link rel="stylesheet" href="css/style.css">
   <!-- end CSS-->
+  
+	<script src="js/processing.js"></script>
+	
 </head>
 
 <body>
 
   <div id="container">
-    <header>
 
-    </header>
-    <div id="main" role="main">
+    <canvas data-processing-sources="test3.pde"></canvas>
 
-    </div>
-    <footer>
-
-    </footer>
   </div> <!--! end of #container -->
 
 
   <!-- JavaScript at the bottom for fast page loading -->
 
   <!-- Grab Google CDN's jQuery, with a protocol relative URL; fall back to local if offline -->
-  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"></script>
-  <script>window.jQuery || document.write('<script src="js/libs/jquery-1.6.2.min.js"><\/script>')</script>
+  <script>window.jQuery || document.write('<script src="js/jquery-1.6.2.js"><\/script>')</script>
 
 
   <!-- Prompt IE 6 users to install Chrome Frame. Remove this if you want to support IE 6.
