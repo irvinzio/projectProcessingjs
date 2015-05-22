@@ -1,9 +1,11 @@
+//se declaran en numero de vectores que se mostraran en pantalla
 Mover[] movers = new Mover[10];
 
 void setup() {
   size(500,500);
   smooth();
   background(255, 204, 0);
+  //inicializa los vectores
   for (int i = 0; i < movers.length; i++) {
     movers[i] = new Mover(); 
   }
@@ -13,13 +15,14 @@ void draw() {
   noStroke();
   fill(255,10);
   rect(0,0,width,height);
+  //setea cada uno de los veectores en la pantalla
   for (int i = 0; i < movers.length; i++) {
     movers[i].update();
     movers[i].checkEdges();
     movers[i].display(); 
   }
 }
-
+//los atributos que tendra cada vector
 class Mover {
 
   PVector location;
@@ -32,24 +35,25 @@ class Mover {
     topspeed = 4;
   }
   void update() {
-    // Our algorithm for calculating acceleration:
+    // calcula la acelaracion
     PVector mouse = new PVector(mouseX,mouseY);
-    PVector dir = PVector.sub(mouse,location);  // Find vector pointing towards mouse
+    PVector dir = PVector.sub(mouse,location);  // apunta el vector hacia el puntero del mouse
     dir.normalize();     // Normalize
     dir.mult(5);       // Scale 
-    acceleration = dir;  // Set to acceleration
+    acceleration = dir;  // aceleracion
 
-    // Motion 101!  Velocity changes by acceleration.  Location changes by velocity.
+    // la velocidad cambia por aceleracion, y la ubicacion por la velocidad.
     velocity.add(acceleration);
     velocity.limit(topspeed);
     location.add(velocity);
   }
+  //muestra el vector
   void display() {
     stroke(0);
     fill(175);
     ellipse(location.x,location.y,16,16);
   }
-
+//checa las dimensines de la pantalla para que los vectores no lo sobrepasen
   void checkEdges() {
 
     if (location.x > width) {
